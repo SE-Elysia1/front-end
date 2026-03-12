@@ -1,0 +1,209 @@
+/* Background full */
+.login-container {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100%;
+  background: #179dc3;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  overflow: hidden;
+  padding: 24px 16px;
+  font-family: Arial, sans-serif;
+}
+
+/* Box Login */
+.login-box {
+  width: min(92vw, 420px);
+  padding: clamp(20px, 4vw, 40px);
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  position: relative;
+  z-index: 2;
+}
+
+.makicibi-corner {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: clamp(84px, 24vw, 200px);
+  height: clamp(84px, 24vw, 200px);
+  transform: translate(35%, -35%);
+  object-fit: contain;
+  z-index: 3;
+}
+
+.login-box h2 {
+  text-align: center;
+  margin-bottom: 10px;
+}
+
+.auth-mode-toggle {
+  display: flex;
+  gap: 10px;
+  width: min(100%, 320px);
+  margin: 0 auto 26px;
+  padding: 6px;
+  border: 1px solid #8bcde1;
+  border-radius: 12px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.auth-mode-toggle button {
+  flex: 1;
+  padding: 9px 10px;
+  border: none;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #48717e;
+  font-weight: 600;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.auth-mode-toggle button:hover {
+  background: #eef8ff;
+  color: #117a99;
+  transform: scale(1.06);
+  box-shadow: 0 6px 14px rgba(255, 255, 255, 0.5);
+}
+
+.auth-mode-toggle button.active {
+  background: #0f2b40;
+  color: #fff;
+}
+
+.login-box input {
+  display: block;
+  width: min(100%, 320px);
+  margin: 0 auto;
+  margin-bottom: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  text-align: center;
+}
+
+.login-box button {
+  padding: 12px;
+  border: none;
+  border-radius: 8px;
+  background: #56b7ea;
+  color: rgb(250, 250, 250);
+  font-weight: bold;
+  cursor: pointer;
+  transition: 0.3s;
+}
+
+.login-box button:hover {
+  background: #117a99;
+}
+
+.login-box > button {
+  width: min(100%, 320px);
+  margin: 0 auto;
+}
+
+/* Animasi PC */
+.pc-animation {
+  position: absolute;
+  --move-x: 0vw;
+  --move-y: 0vh;
+  animation-name: movePc;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  pointer-events: none;
+}
+
+.flyingcibi-animation {
+  position: absolute;
+  --move-x: 0vw;
+  --move-y: 0vh;
+  animation-name: flyCibi;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+  pointer-events: none;
+}
+
+@keyframes movePc {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  100% { transform: translate(var(--move-x), var(--move-y)) rotate(10deg); }
+}
+
+@keyframes flyCibi {
+  0% { transform: translate(0, 0) rotate(0deg); }
+  50% { transform: translate(calc(var(--move-x) * 0.5), calc(var(--move-y) * 0.5 - 2vh)) rotate(180deg); }
+  100% { transform: translate(var(--move-x), var(--move-y)) rotate(360deg); }
+}
+
+@media (max-width: 768px) {
+  .login-container {
+    align-items: flex-start;
+    padding-top: 56px;
+  }
+
+  .login-box {
+    border-radius: 14px;
+  }
+
+  .auth-mode-toggle button {
+    font-size: 0.92rem;
+  }
+
+  .pc-animation,
+  .flyingcibi-animation {
+    opacity: 0.12 !important;
+    animation-duration: 10s !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .login-container {
+    padding: 20px 12px;
+    align-items: center;
+  }
+
+  .login-box {
+    width: 100%;
+    padding: 18px 14px;
+    gap: 12px;
+  }
+
+  .makicibi-corner {
+    width: 84px;
+    height: 84px;
+    transform: translate(26%, -26%);
+  }
+
+  .login-box h2 {
+    font-size: 1.3rem;
+    margin-bottom: 8px;
+  }
+
+  .auth-mode-toggle {
+    margin-bottom: 18px;
+    gap: 6px;
+    padding: 4px;
+  }
+
+  .auth-mode-toggle button {
+    padding: 8px 8px;
+    font-size: 0.86rem;
+  }
+
+  .login-box input {
+    font-size: 0.95rem;
+    padding: 9px;
+    margin-bottom: 8px;
+  }
+
+  .login-box > button {
+    font-size: 0.95rem;
+    padding: 10px;
+  }
+}
