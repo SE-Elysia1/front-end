@@ -34,7 +34,7 @@ You will need a [backend server](https://github.com/SE-Elysia1/SE-elysia-backend
 
 
 ### extra notes
-Birdy loves Huo Huo
-Carlos loves Aul
+Birdy loves Huo Huo<br>
+Carlos loves Aul<br>
 SilverWolf loves Cyrene and Evernight
 
