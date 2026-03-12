@@ -1,4 +1,4 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
+
 import { useCallback, useEffect, useState } from "react";
 import "./dashboard.css";
 
@@ -330,10 +330,6 @@ export default function Dashboard() {
       if (response.ok) {
         await fetchUserBalance();
         await fetchTimer();
-        const totalSec = selectedPlans.reduce(
-          (sum, p) => sum + p.durationSeconds * planQuantities[p.id],
-          0,
-        );
         await fetchLogs();
         setPlanQuantities({});
         setIsPlanOpen(false);
