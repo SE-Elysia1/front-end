@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useState } from "react";
 import "./dashboard.css";
 
@@ -85,9 +84,11 @@ const normalizePlans = (payload: unknown): PlayPlan[] => {
     const obj = raw as Record<string, unknown>;
     const id = toNumber(obj.id) ?? toNumber(obj.planId) ?? 0;
     const label = getString(obj.name) ?? getString(obj.label) ?? "Paket";
+    const hours = toNumber(obj.hours) ?? 0;
     const minutes = toNumber(obj.minutes) ?? 0;
+    const durationSeconds = hours > 0 ? hours * 3600 : minutes * 60;
     const priceCoin = toNumber(obj.price) ?? toNumber(obj.coin) ?? 0;
-    items.push({ id, label, durationSeconds: minutes * 60, priceCoin });
+    items.push({ id, label, durationSeconds, priceCoin });
   }
   return items;
 };
@@ -177,9 +178,10 @@ export default function Dashboard() {
     try {
       const response = await fetch(`${BASEURL}/api/user/${user.userId}`);
       if (!response.ok) throw new Error();
-      const data = await response.json();
-      const serverCoin =
-        toNumber(data.coin) ?? toNumber(data.data?.coin) ?? coin;
+
+      const result = await response.json(); 
+      const serverCoin = result.data?.balance ?? coin;
+
       setCoin(serverCoin);
       localStorage.setItem("coin", String(serverCoin));
     } catch {
@@ -499,9 +501,10 @@ export default function Dashboard() {
               {!isPlanLoading &&
                 plans.map((p) => (
                   <div key={p.id} className="plan-item-row">
-                    <p>
-                      {p.label} ({Math.round(p.durationSeconds / 60)}m)
-                    </p>
+                    <div className="menu-item-info">
+                      <p>{p.label}</p>
+                      <span>{p.priceCoin}🪙</span>
+                    </div>
                     <div className="qty-control">
                       <button
                         className="btn secondary"
@@ -556,7 +559,7 @@ export default function Dashboard() {
                   <div key={item.name} className="menu-item-row">
                     <div className="menu-item-info">
                       <p>{item.name}</p>
-                      <span>{item.price}c</span>
+                      <span>{item.price}🪙</span>
                     </div>
                     <div className="qty-control">
                       <button
