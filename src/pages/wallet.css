@@ -191,10 +191,11 @@
   place-items: center;
 }
 
-.qr-svg {
+.qr-image {
   width: min(320px, 100%);
   height: auto;
   border-radius: 12px;
+  display: block;
 }
 
 .qr-hint {

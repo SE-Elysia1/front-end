@@ -68,6 +68,29 @@ const getCoinFromResponse = (data: unknown) => {
   return null;
 };
 
+const getTokenFromResponse = (data: unknown) => {
+  if (!data || typeof data !== "object") return null;
+  const obj = data as Record<string, unknown>;
+
+  const direct =
+    (typeof obj.token === "string" ? obj.token : null) ??
+    (typeof obj.accessToken === "string" ? obj.accessToken : null) ??
+    (typeof obj.jwt === "string" ? obj.jwt : null);
+  if (direct) return direct;
+
+  const payload = obj.data;
+  if (payload && typeof payload === "object") {
+    const payloadObj = payload as Record<string, unknown>;
+    const nested =
+      (typeof payloadObj.token === "string" ? payloadObj.token : null) ??
+      (typeof payloadObj.accessToken === "string" ? payloadObj.accessToken : null) ??
+      (typeof payloadObj.jwt === "string" ? payloadObj.jwt : null);
+    if (nested) return nested;
+  }
+
+  return null;
+};
+
 export default function Login() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [username, setUsername] = useState("");
@@ -121,6 +144,9 @@ export default function Login() {
 
             const coin = getCoinFromResponse(data);
             if (coin !== null) localStorage.setItem("coin", String(coin));
+
+            const token = getTokenFromResponse(data);
+            if (token) localStorage.setItem("token", token);
 
            navigate("/app/dashboard");
          } else {

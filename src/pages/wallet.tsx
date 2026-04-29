@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react"
 import "./wallet.css"
+import qrCodeRickroll from "../assets/qrcode_rickroll.png"
+
+const BASEURL = import.meta.env.VITE_BASEURL
 
 type PaymentMethod = "bank"
-const BASEURL = import.meta.env.VITE_BASEURL
 const toPositiveInt = (value: string) => {
   const parsed = Number.parseInt(value, 10)
   if (!Number.isFinite(parsed) || parsed <= 0) return null
@@ -64,6 +66,11 @@ export default function Wallet() {
     return Number.isFinite(parsed) ? parsed : null
   }, [])
 
+  const authToken = useMemo(() => {
+    const fromStorage = localStorage.getItem("token")?.trim()
+    return fromStorage ? fromStorage : null
+  }, [])
+
   useEffect(() => {
     localStorage.setItem("coin", String(coin))
   }, [coin])
@@ -93,18 +100,23 @@ export default function Wallet() {
       return
     }
 
+    if (!authToken) {
+      setTopupError("Token login belum ada. Silakan login ulang dulu ya.")
+      return
+    }
+
     setIsTopupLoading(true)
 
     try {
-      const response = await fetch(`${BASEURL}api/user/topup`, {
+      const response = await fetch(`${BASEURL}/api/user/topup`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
         },
         body: JSON.stringify({
           userId,
           amount,
-          paymentMethod,
         }),
       })
 
@@ -196,40 +208,12 @@ export default function Wallet() {
               </button>
             </div>
 
-            <div className="qr-box" aria-label="QR palsu (dummy)">
-              <svg viewBox="0 0 210 210" className="qr-svg" aria-hidden="true">
-                <rect x="0" y="0" width="210" height="210" fill="#fff" />
-                {/* finder patterns */}
-                <rect x="10" y="10" width="60" height="60" fill="#111827" />
-                <rect x="18" y="18" width="44" height="44" fill="#fff" />
-                <rect x="26" y="26" width="28" height="28" fill="#111827" />
-
-                <rect x="140" y="10" width="60" height="60" fill="#111827" />
-                <rect x="148" y="18" width="44" height="44" fill="#fff" />
-                <rect x="156" y="26" width="28" height="28" fill="#111827" />
-
-                <rect x="10" y="140" width="60" height="60" fill="#111827" />
-                <rect x="18" y="148" width="44" height="44" fill="#fff" />
-                <rect x="26" y="156" width="28" height="28" fill="#111827" />
-
-                {/* random-ish modules (dummy) */}
-                {Array.from({ length: 120 }).map((_, index) => {
-                  const col = (index * 7) % 21
-                  const row = (index * 11) % 21
-                  const size = 8
-                  const x = 10 + col * size
-                  const y = 10 + row * size
-                  const inFinder =
-                    (x < 78 && y < 78) || (x > 132 && y < 78) || (x < 78 && y > 132)
-                  if (inFinder) return null
-                  const on = (index * 13 + row + col) % 3 !== 0
-                  return on ? <rect key={index} x={x} y={y} width={size} height={size} fill="#111827" /> : null
-                })}
-              </svg>
+            <div className="qr-box" aria-label="QR untuk transfer bank">
+              <img className="qr-image" src={qrCodeRickroll} alt="QR transfer bank" />
             </div>
 
             <p className="qr-hint">
-              QR ini hanya dummy (palsu) untuk tampilan. Kamu bisa lanjut klik <strong>Top Up</strong> setelah transfer.
+              Scan QR lalu lakukan transfer. Setelah itu, klik <strong>Top Up</strong> untuk konfirmasi.
             </p>
           </div>
         </div>
