@@ -3,6 +3,7 @@ import "./wallet.css"
 import qrCodeRickroll from "../assets/qrcode_rickroll.png"
 
 const BASEURL = import.meta.env.VITE_BASEURL
+const PHYSICAL_PC_ID = import.meta.env.VITE_PC_ID
 
 type PaymentMethod = "bank"
 const toPositiveInt = (value: string) => {
@@ -53,11 +54,12 @@ export default function Wallet() {
     const parsed = saved ? Number(saved) : 0
     return Number.isFinite(parsed) ? parsed : 0
   })
-  const [paymentMethod] = useState<PaymentMethod>("bank")
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("bank")
   const [topupAmount, setTopupAmount] = useState("1")
   const [isTopupLoading, setIsTopupLoading] = useState(false)
   const [topupError, setTopupError] = useState<string | null>(null)
   const [isQrOpen, setIsQrOpen] = useState(false)
+  const [pendingTopupAmount, setPendingTopupAmount] = useState<number | null>(null)
 
   const userId = useMemo(() => {
     const raw = localStorage.getItem("userId")
@@ -69,6 +71,15 @@ export default function Wallet() {
   const authToken = useMemo(() => {
     const fromStorage = localStorage.getItem("token")?.trim()
     return fromStorage ? fromStorage : null
+  }, [])
+
+  const pcId = useMemo(() => {
+    const envPcId = typeof PHYSICAL_PC_ID === "string" ? Number.parseInt(PHYSICAL_PC_ID, 10) : null
+    if (envPcId !== null && Number.isFinite(envPcId)) return envPcId
+    const raw = localStorage.getItem("pcId")
+    if (!raw) return null
+    const parsed = Number.parseInt(raw, 10)
+    return Number.isFinite(parsed) ? parsed : null
   }, [])
 
   useEffect(() => {
@@ -86,7 +97,7 @@ export default function Wallet() {
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [isQrOpen])
 
-  const topUp = async () => {
+  const confirmTopUp = async (amount: number) => {
     setTopupError(null)
 
     if (!userId) {
@@ -94,9 +105,8 @@ export default function Wallet() {
       return
     }
 
-    const amount = toPositiveInt(topupAmount)
-    if (!amount) {
-      setTopupError("Jumlah top up harus angka > 0.")
+    if (!pcId) {
+      setTopupError("PC ID belum ada. Coba login ulang dulu ya.")
       return
     }
 
@@ -116,6 +126,7 @@ export default function Wallet() {
         },
         body: JSON.stringify({
           userId,
+          pcId,
           amount,
         }),
       })
@@ -132,12 +143,49 @@ export default function Wallet() {
 
       const nextCoin = getCoinFromResponse(payload)
       setCoin((prev) => (nextCoin !== null ? nextCoin : prev + amount))
+      setPendingTopupAmount(null)
     } catch (error) {
       console.error("Top up error:", error)
       setTopupError(error instanceof Error ? error.message : "Top up gagal. Coba lagi ya.")
     } finally {
       setIsTopupLoading(false)
     }
+  }
+
+  const startTopUpFlow = () => {
+    setTopupError(null)
+
+    const amount = toPositiveInt(topupAmount)
+    if (!amount) {
+      setTopupError("Jumlah top up harus angka > 0.")
+      return
+    }
+
+    if (!userId) {
+      setTopupError("User ID belum ada. Coba login ulang dulu ya.")
+      return
+    }
+
+    if (!authToken) {
+      setTopupError("Token login belum ada. Silakan login ulang dulu ya.")
+      return
+    }
+
+    setPendingTopupAmount(amount)
+  }
+
+  const openQrForPayment = (method: PaymentMethod) => {
+    if (!pendingTopupAmount) {
+      setTopupError("Isi jumlah top up dulu ya, baru pilih metode pembayaran.")
+      return
+    }
+    setPaymentMethod(method)
+    setIsQrOpen(true)
+  }
+
+  const closeQrAndApplyTopUp = () => {
+    setIsQrOpen(false)
+    if (pendingTopupAmount && !isTopupLoading) confirmTopUp(pendingTopupAmount)
   }
 
   return (
@@ -166,9 +214,12 @@ export default function Wallet() {
 
         {topupError ? <p className="wallet-error">{topupError}</p> : null}
 
-        <button className="btn" onClick={topUp} disabled={isTopupLoading}>
+        <button className="btn" onClick={startTopUpFlow} disabled={isTopupLoading || !!pendingTopupAmount}>
           {isTopupLoading ? "Memproses..." : "Top Up"}
         </button>
+        {pendingTopupAmount ? (
+          <p className="wallet-hint">Silakan pilih metode pembayaran untuk top up {pendingTopupAmount} coin.</p>
+        ) : null}
       </div>
 
       <div className="card payment-card">
@@ -177,7 +228,8 @@ export default function Wallet() {
         <button
           type="button"
           className={`payment-option ${paymentMethod === "bank" ? "selected" : ""}`}
-          onClick={() => setIsQrOpen(true)}
+          onClick={() => openQrForPayment("bank")}
+          disabled={!pendingTopupAmount || isTopupLoading}
         >
           <span className="payment-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none">
@@ -187,7 +239,7 @@ export default function Wallet() {
           </span>
           <span>
             <span className="payment-name">Transfer Bank</span>
-            <span className="payment-detail">Klik untuk tampilkan QR</span>
+            <span className="payment-detail">BCA / Mandiri / BRI / OVO / Gopay </span>
           </span>
         </button>
       </div>
@@ -203,8 +255,8 @@ export default function Wallet() {
           <div className="qr-modal" role="dialog" aria-modal="true" aria-label="QR Transfer Bank">
             <div className="qr-modal-header">
               <h3 className="qr-modal-title">Scan QR untuk Transfer Bank</h3>
-              <button type="button" className="qr-close" onClick={() => setIsQrOpen(false)}>
-                Tutup
+              <button type="button" className="qr-close" onClick={closeQrAndApplyTopUp} disabled={isTopupLoading}>
+                {isTopupLoading ? "Memproses..." : "Tutup"}
               </button>
             </div>
 
@@ -212,9 +264,7 @@ export default function Wallet() {
               <img className="qr-image" src={qrCodeRickroll} alt="QR transfer bank" />
             </div>
 
-            <p className="qr-hint">
-              Scan QR lalu lakukan transfer. Setelah itu, klik <strong>Top Up</strong> untuk konfirmasi.
-            </p>
+            <p className="qr-hint">Scan QR lalu lakukan transfer. Setelah selesai, klik <strong>Tutup</strong>.</p>
           </div>
         </div>
       ) : null}

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import "./dashboard.css";
 
 type LogEntry = {
@@ -26,6 +27,8 @@ type PlayPlan = {
 };
 
 const BASEURL = import.meta.env.VITE_BASEURL;
+const PHYSICAL_PC_ID = import.meta.env.VITE_PC_ID;
+const toDateMs = (value: number) => (value < 1_000_000_000_000 ? value * 1000 : value);
 
 const getInitialCoin = () => {
   const saved = localStorage.getItem("coin");
@@ -120,6 +123,7 @@ const getLogColor = (coins: number) => {
   return coins >= 0 ? "log-positive" : "log-negative";
 };
 export default function Dashboard() {
+  const navigate = useNavigate();
   const [foodMenu, setFoodMenu] = useState<FoodItem[]>([]);
   const [plans, setPlans] = useState<PlayPlan[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -133,7 +137,6 @@ export default function Dashboard() {
   const [coin, setCoin] = useState(getInitialCoin());
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isPlanOpen, setIsPlanOpen] = useState(false);
-  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [planQuantities, setPlanQuantities] = useState<Record<number, number>>(
@@ -143,13 +146,33 @@ export default function Dashboard() {
   const [user] = useState({
     userId: localStorage.getItem("userId"),
     username: localStorage.getItem("username"),
-    pcId: localStorage.getItem("pcId"),
+    pcId: (PHYSICAL_PC_ID ? String(PHYSICAL_PC_ID) : null) ?? localStorage.getItem("pcId"),
   });
+
+  const loginAt = useMemo(() => {
+    const raw = localStorage.getItem("loginAt");
+    if (!raw) return null;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : null;
+  }, []);
+
+  const authToken = useMemo(() => {
+    const fromStorage = localStorage.getItem("token")?.trim();
+    return fromStorage ? fromStorage : null;
+  }, []);
 
   const fetchTimer = useCallback(async () => {
     if (!user.pcId) return;
+    if (!authToken) {
+      console.error("Token login belum ada.");
+      return;
+    }
     try {
-      const response = await fetch(`${BASEURL}/api/pcs/${user.pcId}/timer`);
+      const response = await fetch(`${BASEURL}/api/pcs/${user.pcId}/timer`, {
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
       if (!response.ok) throw new Error();
       const data = await response.json();
       if (data.success && data.status === "online" && data.sessionEndTime) {
@@ -170,7 +193,7 @@ export default function Dashboard() {
     } catch {
       console.error("Gagal mengambil timer.");
     }
-  }, [user.pcId]);
+  }, [user.pcId, authToken]);
 
   const fetchUserBalance = useCallback(async () => {
     if (!user.userId) return;
@@ -194,7 +217,13 @@ export default function Dashboard() {
   const fetchMenus = useCallback(async (signal?: AbortSignal) => {
     setIsMenuLoading(true);
     try {
-      const response = await fetch(`${BASEURL}/api/menus`, { signal });
+      if (!authToken) throw new Error("Token login belum ada.");
+      const response = await fetch(`${BASEURL}/api/menus`, {
+        signal,
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
       const payload = await response.json();
       setFoodMenu(normalizeMenus(payload));
     } catch (e) {
@@ -202,12 +231,18 @@ export default function Dashboard() {
     } finally {
       setIsMenuLoading(false);
     }
-  }, []);
+  }, [authToken]);
 
   const fetchPlans = useCallback(async (signal?: AbortSignal) => {
     setIsPlanLoading(true);
     try {
-      const response = await fetch(`${BASEURL}/api/plans`, { signal });
+      if (!authToken) throw new Error("Token login belum ada.");
+      const response = await fetch(`${BASEURL}/api/plans`, {
+        signal,
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+        },
+      });
       const payload = await response.json();
       setPlans(normalizePlans(payload));
     } catch (e) {
@@ -215,16 +250,22 @@ export default function Dashboard() {
     } finally {
       setIsPlanLoading(false);
     }
-  }, []);
+  }, [authToken]);
 
   const fetchLogs = useCallback(
     async (signal?: AbortSignal) => {
       if (!user.userId) return;
+      if (!authToken) return;
       setIsLogsLoading(true);
       try {
         const response = await fetch(
           `${BASEURL}/api/logs?requestingUserId=${user.userId}`,
-          { signal },
+          {
+            signal,
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+            },
+          },
         );
         if (!response.ok) throw new Error();
         const data: LogEntry[] = await response.json();
@@ -239,7 +280,7 @@ export default function Dashboard() {
         setIsLogsLoading(false);
       }
     },
-    [user.userId],
+    [user.userId, authToken],
   );
 
   useEffect(() => {
@@ -284,9 +325,13 @@ export default function Dashboard() {
     };
 
     try {
+      if (!authToken) return alert("Token login belum ada. Silakan login ulang dulu ya.");
       const response = await fetch(`${BASEURL}/api/order`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
         body: JSON.stringify(payload),
       });
 
@@ -323,9 +368,13 @@ export default function Dashboard() {
     };
 
     try {
+      if (!authToken) return alert("Token login belum ada. Silakan login ulang dulu ya.");
       const response = await fetch(`${BASEURL}/api/session/buy`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
         body: JSON.stringify(payload),
       });
 
@@ -375,7 +424,23 @@ export default function Dashboard() {
     }
   };
 
-  const recentLogs = logs.slice(0, 5);
+  const todaysLogs = useMemo(() => {
+    const baseMs = loginAt ?? Date.now();
+    const startMs = new Date(baseMs);
+    startMs.setHours(0, 0, 0, 0);
+    const endMs = new Date(baseMs);
+    endMs.setHours(23, 59, 59, 999);
+
+    const start = startMs.getTime();
+    const end = endMs.getTime();
+
+    return logs.filter((log) => {
+      const created = toDateMs(log.createdAt);
+      return created >= start && created <= end;
+    });
+  }, [logs, loginAt]);
+
+  const recentLogs = todaysLogs.slice(0, 5);
 
   return (
     <section className="page dashboard-page">
@@ -400,6 +465,7 @@ export default function Dashboard() {
 
         <article className="card action-card">
           <h3>Paket</h3>
+          <p className="action-card-hint">Pilih paket bermain</p>
           <button className="btn" onClick={() => setIsPlanOpen(true)}>
             Beli Durasi
           </button>
@@ -407,6 +473,7 @@ export default function Dashboard() {
 
         <article className="card action-card">
           <h3>Menu</h3>
+          <p className="action-card-hint">Pilih menu makanan dan minuman</p>
           <button className="btn" onClick={() => setIsMenuOpen(true)}>
             Pesan Makan
           </button>
@@ -415,10 +482,10 @@ export default function Dashboard() {
         <article className="card history-card">
           <div className="history-card-header">
             <h3>History</h3>
-            {logs.length > 5 && (
+            {todaysLogs.length > 5 && (
               <button
                 className="btn-link"
-                onClick={() => setIsHistoryOpen(true)}
+                onClick={() => navigate("/app/history")}
               >
                 Lihat Semua
               </button>
@@ -438,7 +505,7 @@ export default function Dashboard() {
                     <span className="history-date">{log.displayDate}</span>
                   </div>
                   <span className={`history-coins ${getLogColor(log.coins)}`}>
-                    {log.coins >= 0 ? `+${log.coins}` : log.coins}c
+                    {log.coins >= 0 ? `+${log.coins}` : log.coins} Coin
                   </span>
                 </li>
               ))}
@@ -446,45 +513,6 @@ export default function Dashboard() {
           )}
         </article>
       </div>
-
-      {/* History Modal */}
-      {isHistoryOpen && (
-        <div
-          className="menu-modal-overlay"
-          onClick={() => setIsHistoryOpen(false)}
-        >
-          <div className="menu-modal card" onClick={(e) => e.stopPropagation()}>
-            <div className="menu-modal-header">
-              <h3>Riwayat Transaksi</h3>
-            </div>
-            <div className="menu-list">
-              {isLogsLoading ? (
-                <p className="modal-status">Memuat...</p>
-              ) : logs.length === 0 ? (
-                <p className="modal-status">Belum ada transaksi.</p>
-              ) : (
-                logs.map((log) => (
-                  <div key={log.id} className="history-modal-item">
-                    <span className="history-icon">{getLogIcon(log.type)}</span>
-                    <div className="history-info">
-                      <span className="history-desc">{log.description}</span>
-                      <span className="history-date">{log.displayDate}</span>
-                    </div>
-                    <span className={`history-coins ${getLogColor(log.coins)}`}>
-                      {log.coins >= 0 ? `+${log.coins}` : log.coins}c
-                    </span>
-                  </div>
-                ))
-              )}
-            </div>
-            <div className="menu-modal-footer">
-              <button className="btn" onClick={() => setIsHistoryOpen(false)}>
-                Tutup
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Plan Modal */}
       {isPlanOpen && (

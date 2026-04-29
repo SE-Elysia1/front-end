@@ -28,6 +28,12 @@
   margin: 0;
 }
 
+.action-card-hint {
+  margin-top: 8px;
+  color: #586278;
+  font-size: 0.95rem;
+}
+
 .coin-card {
   color: #fff;
   border: 1px solid rgba(29, 78, 216, 0.15);

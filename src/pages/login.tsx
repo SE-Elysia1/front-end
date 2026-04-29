@@ -91,6 +91,31 @@ const getTokenFromResponse = (data: unknown) => {
   return null;
 };
 
+const getPcIdFromResponse = (data: unknown) => {
+  if (!data || typeof data !== "object") return null;
+  const obj = data as Record<string, unknown>;
+
+  const direct =
+    toFiniteNumber(obj.pcId) ??
+    toFiniteNumber(obj.pc_id) ??
+    toFiniteNumber(obj.pc) ??
+    toFiniteNumber(obj.idPc);
+  if (direct !== null) return direct;
+
+  const payload = obj.data;
+  if (payload && typeof payload === "object") {
+    const payloadObj = payload as Record<string, unknown>;
+    const nested =
+      toFiniteNumber(payloadObj.pcId) ??
+      toFiniteNumber(payloadObj.pc_id) ??
+      toFiniteNumber(payloadObj.pc) ??
+      toFiniteNumber(payloadObj.idPc);
+    if (nested !== null) return nested;
+  }
+
+  return null;
+};
+
 export default function Login() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [username, setUsername] = useState("");
@@ -121,9 +146,10 @@ export default function Login() {
       : `${BASEURL}/api/register`;
 
     try {
+      const envPcId = toFiniteNumber(PHYSICAL_PC_ID);
       const payload =
         mode === "signin"
-          ? { username, password, pcId: parseInt(PHYSICAL_PC_ID) }
+          ? { username, password, pcId: envPcId !== null ? envPcId : undefined }
           : { username, password };
 
       const response = await fetch(endpoint, {
@@ -137,7 +163,10 @@ export default function Login() {
        if (response.ok) {
          if (mode === "signin") {
            localStorage.setItem("username", username);
-           localStorage.setItem("pcId", PHYSICAL_PC_ID);
+           localStorage.setItem("loginAt", String(Date.now()));
+
+            const pcId = getPcIdFromResponse(data) ?? envPcId;
+            if (pcId !== null) localStorage.setItem("pcId", String(pcId));
 
             const userId = getUserIdFromResponse(data);
             if (userId !== null) localStorage.setItem("userId", String(userId));

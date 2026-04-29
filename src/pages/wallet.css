@@ -34,9 +34,17 @@
   font-weight: 700;
 }
 
+.wallet-hint {
+  margin: 10px 0 0;
+  color: #586278;
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
 .payment-card {
   max-width: 860px;
   padding: 24px;
+  margin-top: 10px;
 }
 
 .payment-title {
