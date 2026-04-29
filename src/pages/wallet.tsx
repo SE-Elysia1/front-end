@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import "./wallet.css"
 
-type PaymentMethod = "cash" | "bank"
+type PaymentMethod = "bank"
 const BASEURL = import.meta.env.VITE_BASEURL
 const toPositiveInt = (value: string) => {
   const parsed = Number.parseInt(value, 10)
@@ -51,10 +51,11 @@ export default function Wallet() {
     const parsed = saved ? Number(saved) : 0
     return Number.isFinite(parsed) ? parsed : 0
   })
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash")
+  const [paymentMethod] = useState<PaymentMethod>("bank")
   const [topupAmount, setTopupAmount] = useState("1")
   const [isTopupLoading, setIsTopupLoading] = useState(false)
   const [topupError, setTopupError] = useState<string | null>(null)
+  const [isQrOpen, setIsQrOpen] = useState(false)
 
   const userId = useMemo(() => {
     const raw = localStorage.getItem("userId")
@@ -66,6 +67,17 @@ export default function Wallet() {
   useEffect(() => {
     localStorage.setItem("coin", String(coin))
   }, [coin])
+
+  useEffect(() => {
+    if (!isQrOpen) return
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsQrOpen(false)
+    }
+
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [isQrOpen])
 
   const topUp = async () => {
     setTopupError(null)
@@ -152,25 +164,8 @@ export default function Wallet() {
 
         <button
           type="button"
-          className={`payment-option ${paymentMethod === "cash" ? "selected" : ""}`}
-          onClick={() => setPaymentMethod("cash")}
-        >
-          <span className="payment-icon" aria-hidden="true">
-            <svg viewBox="0 0 24 24" fill="none">
-              <rect x="5" y="4" width="12" height="16" rx="2" />
-              <path d="M9 8h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2Z" />
-            </svg>
-          </span>
-          <span>
-            <span className="payment-name">Tunai</span>
-            <span className="payment-detail">Bayar langsung ke kasir</span>
-          </span>
-        </button>
-
-        <button
-          type="button"
           className={`payment-option ${paymentMethod === "bank" ? "selected" : ""}`}
-          onClick={() => setPaymentMethod("bank")}
+          onClick={() => setIsQrOpen(true)}
         >
           <span className="payment-icon" aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none">
@@ -180,10 +175,65 @@ export default function Wallet() {
           </span>
           <span>
             <span className="payment-name">Transfer Bank</span>
-            <span className="payment-detail">BCA / Mandiri / BRI</span>
+            <span className="payment-detail">Klik untuk tampilkan QR</span>
           </span>
         </button>
       </div>
+
+      {isQrOpen ? (
+        <div
+          className="qr-modal-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setIsQrOpen(false)
+          }}
+        >
+          <div className="qr-modal" role="dialog" aria-modal="true" aria-label="QR Transfer Bank">
+            <div className="qr-modal-header">
+              <h3 className="qr-modal-title">Scan QR untuk Transfer Bank</h3>
+              <button type="button" className="qr-close" onClick={() => setIsQrOpen(false)}>
+                Tutup
+              </button>
+            </div>
+
+            <div className="qr-box" aria-label="QR palsu (dummy)">
+              <svg viewBox="0 0 210 210" className="qr-svg" aria-hidden="true">
+                <rect x="0" y="0" width="210" height="210" fill="#fff" />
+                {/* finder patterns */}
+                <rect x="10" y="10" width="60" height="60" fill="#111827" />
+                <rect x="18" y="18" width="44" height="44" fill="#fff" />
+                <rect x="26" y="26" width="28" height="28" fill="#111827" />
+
+                <rect x="140" y="10" width="60" height="60" fill="#111827" />
+                <rect x="148" y="18" width="44" height="44" fill="#fff" />
+                <rect x="156" y="26" width="28" height="28" fill="#111827" />
+
+                <rect x="10" y="140" width="60" height="60" fill="#111827" />
+                <rect x="18" y="148" width="44" height="44" fill="#fff" />
+                <rect x="26" y="156" width="28" height="28" fill="#111827" />
+
+                {/* random-ish modules (dummy) */}
+                {Array.from({ length: 120 }).map((_, index) => {
+                  const col = (index * 7) % 21
+                  const row = (index * 11) % 21
+                  const size = 8
+                  const x = 10 + col * size
+                  const y = 10 + row * size
+                  const inFinder =
+                    (x < 78 && y < 78) || (x > 132 && y < 78) || (x < 78 && y > 132)
+                  if (inFinder) return null
+                  const on = (index * 13 + row + col) % 3 !== 0
+                  return on ? <rect key={index} x={x} y={y} width={size} height={size} fill="#111827" /> : null
+                })}
+              </svg>
+            </div>
+
+            <p className="qr-hint">
+              QR ini hanya dummy (palsu) untuk tampilan. Kamu bisa lanjut klik <strong>Top Up</strong> setelah transfer.
+            </p>
+          </div>
+        </div>
+      ) : null}
     </section>
   )
 }
