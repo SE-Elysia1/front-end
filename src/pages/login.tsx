@@ -116,6 +116,30 @@ const getPcIdFromResponse = (data: unknown) => {
   return null;
 };
 
+const getRoleFromResponse = (data: unknown) => {
+  if (!data || typeof data !== "object") return null;
+  const obj = data as Record<string, unknown>;
+
+  const direct = typeof obj.role === "string" ? obj.role.trim() : null;
+  if (direct) return direct.toLowerCase();
+
+  const user = obj.user;
+  if (user && typeof user === "object") {
+    const userObj = user as Record<string, unknown>;
+    const nested = typeof userObj.role === "string" ? userObj.role.trim() : null;
+    if (nested) return nested.toLowerCase();
+  }
+
+  const payload = obj.data;
+  if (payload && typeof payload === "object") {
+    const payloadObj = payload as Record<string, unknown>;
+    const nested = typeof payloadObj.role === "string" ? payloadObj.role.trim() : null;
+    if (nested) return nested.toLowerCase();
+  }
+
+  return null;
+};
+
 export default function Login() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [username, setUsername] = useState("");
@@ -177,7 +201,10 @@ export default function Login() {
             const token = getTokenFromResponse(data);
             if (token) localStorage.setItem("token", token);
 
-           navigate("/app/dashboard");
+            const role = getRoleFromResponse(data) ?? "user";
+            localStorage.setItem("role", role);
+
+            navigate(role === "admin" ? "/app/dashboard-admin" : "/app/dashboard");
          } else {
            setSuccess("Registration successful! You can now Sign In.");
            setMode("signin");

@@ -4,16 +4,17 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import Login from "./pages/login"
 import MainLayout from "./layouts/MainLayouts"
 import Dashboard from "./pages/dashboard"
+import DashboardAdmin from "./pages/dashboardAdmin"
 import Wallet from "./pages/wallet"
 import History from "./pages/history"
 import Settings from "./pages/setting"
 
 
 const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
-  const pcId = localStorage.getItem("pcId");
   const username = localStorage.getItem("username");
+  const token = localStorage.getItem("token");
 
-  if (!pcId || !username) {
+  if (!token || !username) {
     return <Navigate to="/login" replace />;
   }
 
@@ -21,9 +22,10 @@ const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
 };
 
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
-  const pcId = localStorage.getItem("pcId");
-  if (pcId) {
-    return <Navigate to="/app/dashboard" replace />;
+  const token = localStorage.getItem("token");
+  const role = localStorage.getItem("role")?.toLowerCase();
+  if (token) {
+    return <Navigate to={role === "admin" ? "/app/dashboard-admin" : "/app/dashboard"} replace />;
   }
   return <>{children}</>;
 };
@@ -48,6 +50,15 @@ function App() {
           <Route path="history" element={<History />} />
           <Route path="settings" element={<Settings />} />
         </Route>
+
+        <Route
+          path="/app/dashboard-admin"
+          element={
+            <ProtectedRoute>
+              <DashboardAdmin />
+            </ProtectedRoute>
+          }
+        />
 
         <Route path="/" element={<Navigate to="/login" replace />} />
       </Routes>
