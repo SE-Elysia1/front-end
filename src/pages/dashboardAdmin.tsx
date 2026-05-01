@@ -286,7 +286,7 @@ export default function DashboardAdmin() {
           </div>
         </div>
         <nav className="admin-nav">
-          <button className="admin-nav-item active" type="button">
+          <button className="admin-nav-item active" type="button" onClick={() => navigate("/app/dashboard-admin")}>
             <span className="admin-nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
                 <path d="M3 10.5L12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V10.5Z" />
@@ -294,7 +294,7 @@ export default function DashboardAdmin() {
             </span>
             Dashboard
           </button>
-          <button className="admin-nav-item" type="button">
+          <button className="admin-nav-item" type="button" onClick={() => navigate("/app/monitoring-admin")}>
             <span className="admin-nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
                 <path d="M12 3v4" />
@@ -306,7 +306,7 @@ export default function DashboardAdmin() {
             </span>
             Monitoring PC
           </button>
-          <button className="admin-nav-item" type="button">
+          <button className="admin-nav-item" type="button" onClick={() => navigate("/app/kelola-user-admin")}>
             <span className="admin-nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />

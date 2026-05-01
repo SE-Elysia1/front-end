@@ -1,7 +1,7 @@
 .admin-dashboard-page {
   display: grid;
   grid-template-columns: 250px 1fr;
-  min-height: calc(100vh - 48px);
+  min-height: 100vh;
   border: 1px solid var(--border);
   border-radius: 18px;
   overflow: hidden;
@@ -198,6 +198,7 @@
   display: grid;
   grid-template-columns: 0.8fr 0.9fr 1.5fr 1fr 1.3fr;
   gap: 10px;
+  align-items: center;
 }
 
 .admin-history-head {
@@ -207,6 +208,42 @@
   font-size: 0.9rem;
   font-weight: 700;
   color: var(--muted);
+}
+
+.admin-history-head > span,
+.admin-history-row > span {
+  padding: 0 12px;
+}
+
+.admin-history-head > span:nth-child(1),
+.admin-history-row > span:nth-child(1) {
+  justify-self: start;
+  text-align: left;
+}
+
+.admin-history-head > span:nth-child(2),
+.admin-history-row > span:nth-child(2) {
+  justify-self: center;
+  text-align: left;
+}
+
+.admin-history-head > span:nth-child(3),
+.admin-history-row > span:nth-child(3) {
+  justify-self: center;
+  text-align: center;
+}
+
+.admin-history-head > span:nth-child(4),
+.admin-history-row > span:nth-child(4),
+.admin-history-head > span:nth-child(5),
+.admin-history-row > span:nth-child(5) {
+  justify-self: end;
+  text-align: right;
+}
+
+.admin-history-head > span:nth-child(5),
+.admin-history-row > span:nth-child(5) {
+  padding-right: 28px;
 }
 
 .admin-history-body {

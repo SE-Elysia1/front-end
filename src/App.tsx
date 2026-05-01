@@ -5,6 +5,8 @@ import Login from "./pages/login"
 import MainLayout from "./layouts/MainLayouts"
 import Dashboard from "./pages/dashboard"
 import DashboardAdmin from "./pages/dashboardAdmin"
+import MonitoringAdmin from "./pages/monitoringAdmin"
+import KelolaUser from "./pages/kelolaUser"
 import Wallet from "./pages/wallet"
 import History from "./pages/history"
 import Settings from "./pages/setting"
@@ -56,6 +58,24 @@ function App() {
           element={
             <ProtectedRoute>
               <DashboardAdmin />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/app/monitoring-admin"
+          element={
+            <ProtectedRoute>
+              <MonitoringAdmin />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/app/kelola-user-admin"
+          element={
+            <ProtectedRoute>
+              <KelolaUser />
             </ProtectedRoute>
           }
         />
