@@ -1,0 +1,72 @@
+.admin-order-history-card {
+  padding: 18px;
+}
+
+.admin-order-history-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.admin-order-history-top h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+
+.admin-order-history-filters {
+  display: inline-flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.admin-order-history-filters select {
+  appearance: none;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  line-height: 1.2;
+  cursor: pointer;
+  min-width: 84px;
+}
+
+.admin-order-history-body {
+  min-height: 280px;
+}
+
+.admin-order-history-empty {
+  padding: 18px 12px;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.admin-order-history-username {
+  font-weight: 800;
+}
+
+.admin-order-history-desc {
+  white-space: pre-line;
+  font-weight: 700;
+}
+
+@media (max-width: 720px) {
+  .admin-order-history-top {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .admin-order-history-filters {
+    width: 100%;
+  }
+
+  .admin-order-history-filters select {
+    flex: 1;
+  }
+}
+

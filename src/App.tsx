@@ -7,6 +7,8 @@ import Dashboard from "./pages/dashboard"
 import DashboardAdmin from "./pages/dashboardAdmin"
 import MonitoringAdmin from "./pages/monitoringAdmin"
 import KelolaUser from "./pages/kelolaUser"
+import HistoryAdmin from "./pages/historyAdmin"
+import LaporanKeuanganAdmin from "./pages/laporanKeuanganAdmin"
 import Wallet from "./pages/wallet"
 import History from "./pages/history"
 import Settings from "./pages/setting"
@@ -76,6 +78,24 @@ function App() {
           element={
             <ProtectedRoute>
               <KelolaUser />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/app/history-admin"
+          element={
+            <ProtectedRoute>
+              <HistoryAdmin />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/app/laporan-keuangan-admin"
+          element={
+            <ProtectedRoute>
+              <LaporanKeuanganAdmin />
             </ProtectedRoute>
           }
         />

@@ -150,7 +150,7 @@ export default function MonitoringAdmin() {
             </span>
             Kelola User
           </button>
-          <button className="admin-nav-item" type="button">
+          <button className="admin-nav-item" type="button" onClick={() => navigate("/app/history-admin")}>
             <span className="admin-nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
                 <path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6" />
