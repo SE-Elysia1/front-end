@@ -60,6 +60,14 @@ const getDefaultMonthYear = () => {
   return { month: now.getMonth(), year: now.getFullYear() };
 };
 
+const resolvePcId = () => {
+  const fromStorage = Number.parseInt(localStorage.getItem("pcId")?.trim() ?? "", 10);
+  if (Number.isFinite(fromStorage) && fromStorage > 0) return fromStorage;
+  const fromEnv = Number.parseInt((import.meta.env.VITE_PC_ID as string | undefined)?.trim() ?? "", 10);
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
+  return null;
+};
+
 const extractOrdersList = (payload: unknown): unknown[] => {
   if (Array.isArray(payload)) return payload;
   if (!payload || typeof payload !== "object") return [];
@@ -235,9 +243,23 @@ export default function HistoryAdmin() {
     });
   }, [dateRange.from, dateRange.to, orders]);
 
-  const handleLogout = () => {
-    localStorage.clear();
-    navigate("/login");
+  const handleLogout = async () => {
+    const pcId = resolvePcId();
+    try {
+      if (pcId) {
+        await fetch(`${BASEURL}/api/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+          body: JSON.stringify({ pcId }),
+        });
+      }
+    } finally {
+      localStorage.clear();
+      navigate("/login");
+    }
   };
 
   const yearOptions = useMemo(() => {

@@ -38,6 +38,14 @@ const toDateMs = (value: number) => (value < 1_000_000_000_000 ? value * 1000 : 
 const formatRupiah = (value: number) =>
   new Intl.NumberFormat("id-ID", { style: "currency", currency: "IDR", maximumFractionDigits: 0 }).format(value);
 
+const resolvePcId = () => {
+  const fromStorage = Number.parseInt(localStorage.getItem("pcId")?.trim() ?? "", 10);
+  if (Number.isFinite(fromStorage) && fromStorage > 0) return fromStorage;
+  const fromEnv = Number.parseInt((import.meta.env.VITE_PC_ID as string | undefined)?.trim() ?? "", 10);
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
+  return null;
+};
+
 const isToday = (timestamp: number) => {
   const now = new Date();
   const date = new Date(toDateMs(timestamp));
@@ -163,11 +171,20 @@ export default function DashboardAdmin() {
 
   const fetchPcUsage = useCallback(async () => {
     if (!authToken) return;
-    const response = await fetch(`${BASEURL}/api/pctimer`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-    });
-    if (!response.ok) throw new Error("Gagal ambil data pctimer");
-    const payload: unknown = await response.json();
+    let payload: unknown;
+    try {
+      const response = await fetch(`${BASEURL}/api/pctimer`, {
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+      if (!response.ok) {
+        setUsedPcCount(0);
+        return;
+      }
+      payload = await response.json();
+    } catch {
+      setUsedPcCount(0);
+      return;
+    }
 
     if (Array.isArray(payload)) {
       const activeCount = payload.filter((item) => {
@@ -270,9 +287,23 @@ export default function DashboardAdmin() {
     fetchMissingUsernames();
   }, [fetchMissingUsernames]);
 
-  const handleLogout = () => {
-    localStorage.clear();
-    navigate("/login");
+  const handleLogout = async () => {
+    const pcId = resolvePcId();
+    try {
+      if (pcId) {
+        await fetch(`${BASEURL}/api/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+          body: JSON.stringify({ pcId }),
+        });
+      }
+    } finally {
+      localStorage.clear();
+      navigate("/login");
+    }
   };
 
   return (

@@ -30,6 +30,19 @@ const BASEURL = import.meta.env.VITE_BASEURL;
 const PHYSICAL_PC_ID = import.meta.env.VITE_PC_ID;
 const toDateMs = (value: number) => (value < 1_000_000_000_000 ? value * 1000 : value);
 
+const resolvePcId = (fallback: string | null) => {
+  const fromStorage = Number.parseInt(localStorage.getItem("pcId")?.trim() ?? "", 10);
+  if (Number.isFinite(fromStorage) && fromStorage > 0) return fromStorage;
+
+  const fromFallback = Number.parseInt(fallback?.trim() ?? "", 10);
+  if (Number.isFinite(fromFallback) && fromFallback > 0) return fromFallback;
+
+  const fromEnv = Number.parseInt(PHYSICAL_PC_ID?.trim() ?? "", 10);
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
+
+  return null;
+};
+
 const getInitialCoin = () => {
   const saved = localStorage.getItem("coin");
   const parsed = saved ? Number(saved) : 0;
@@ -402,7 +415,9 @@ export default function Dashboard() {
 
   const handleLogout = async () => {
     setShowLogoutConfirm(false);
-    if (!user.pcId) {
+    const pcId = resolvePcId(user.pcId);
+    const token = localStorage.getItem("token")?.trim() ?? "";
+    if (!pcId) {
       localStorage.clear();
       window.location.href = "/login";
       return;
@@ -410,8 +425,11 @@ export default function Dashboard() {
     try {
       const response = await fetch(`${BASEURL}/api/logout`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pcId: parseInt(user.pcId, 10) }),
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ pcId }),
       });
       if (response.ok) {
         localStorage.clear();

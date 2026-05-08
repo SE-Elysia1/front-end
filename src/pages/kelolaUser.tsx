@@ -20,6 +20,14 @@ const toNonEmptyString = (value: unknown) => {
   return trimmed.length ? trimmed : null;
 };
 
+const resolvePcId = () => {
+  const fromStorage = Number.parseInt(localStorage.getItem("pcId")?.trim() ?? "", 10);
+  if (Number.isFinite(fromStorage) && fromStorage > 0) return fromStorage;
+  const fromEnv = Number.parseInt((import.meta.env.VITE_PC_ID as string | undefined)?.trim() ?? "", 10);
+  if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
+  return null;
+};
+
 type ManagedUserRow = {
   id: number;
   username: string;
@@ -85,9 +93,23 @@ export default function KelolaUser() {
     fetchUsers();
   }, [fetchUsers, navigate, role]);
 
-  const handleLogout = () => {
-    localStorage.clear();
-    navigate("/login");
+  const handleLogout = async () => {
+    const pcId = resolvePcId();
+    try {
+      if (pcId) {
+        await fetch(`${BASEURL}/api/logout`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          },
+          body: JSON.stringify({ pcId }),
+        });
+      }
+    } finally {
+      localStorage.clear();
+      navigate("/login");
+    }
   };
 
   const filtered = useMemo(() => {
