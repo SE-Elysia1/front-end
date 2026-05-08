@@ -52,13 +52,97 @@ const getDefaultRange = () => {
   return { startDate: formatDateLocal(start), endDate: formatDateLocal(end) };
 };
 
-const escapeHtml = (value: string) =>
+const escapePdfText = (value: string) =>
   value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+    .replaceAll("\\", "\\\\")
+    .replaceAll("(", "\\(")
+    .replaceAll(")", "\\)");
+
+const formatDateReadable = (value: string) => {
+  if (!value) return "-";
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+};
+
+const wrapText = (text: string, maxChars: number) => {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [""];
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxChars && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+};
+
+const buildPdfBytes = (lines: string[]) => {
+  const pageWidth = 595;
+  const pageHeight = 842;
+  const marginLeft = 40;
+  const marginTop = 40;
+  const lineHeight = 16;
+  const maxLinesPerPage = Math.floor((pageHeight - marginTop * 2) / lineHeight);
+
+  const pages: string[][] = [];
+  for (let i = 0; i < lines.length; i += maxLinesPerPage) {
+    pages.push(lines.slice(i, i + maxLinesPerPage));
+  }
+  if (!pages.length) pages.push(["Laporan kosong"]);
+
+  const objects: string[] = [];
+  const addObject = (content: string) => {
+    objects.push(content);
+    return objects.length;
+  };
+
+  const catalogId = addObject("");
+  const pagesId = addObject("");
+  const fontId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+
+  const pageIds: number[] = [];
+  for (const pageLines of pages) {
+    const contentLines: string[] = ["BT", "/F1 12 Tf"];
+    let y = pageHeight - marginTop;
+    for (const line of pageLines) {
+      const escaped = escapePdfText(line);
+      contentLines.push(`1 0 0 1 ${marginLeft} ${y} Tm (${escaped}) Tj`);
+      y -= lineHeight;
+    }
+    contentLines.push("ET");
+    const stream = contentLines.join("\n");
+    const contentId = addObject(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+    const pageId = addObject(
+      `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`,
+    );
+    pageIds.push(pageId);
+  }
+
+  objects[catalogId - 1] = `<< /Type /Catalog /Pages ${pagesId} 0 R >>`;
+  objects[pagesId - 1] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${pageIds.length} >>`;
+
+  let pdf = "%PDF-1.4\n";
+  const offsets: number[] = [0];
+  for (let i = 0; i < objects.length; i += 1) {
+    offsets.push(pdf.length);
+    pdf += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`;
+  }
+  const xrefPos = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n`;
+  pdf += "0000000000 65535 f \n";
+  for (let i = 1; i <= objects.length; i += 1) {
+    pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;
+  return new TextEncoder().encode(pdf);
+};
 
 export default function LaporanKeuanganAdmin() {
   const navigate = useNavigate();
@@ -192,91 +276,52 @@ export default function LaporanKeuanganAdmin() {
   };
 
   const downloadPdf = () => {
-    const title = "Laporan Keuangan";
-    const safePeriod = `${startDate || "-"} — ${endDate || "-"}`;
-    const rowsHtml = filteredLogs
-      .map((log) => {
-        const pcText = log.pcId ? `PC ${log.pcId}` : "-";
-        const userText = displayUsername(log);
-        const typeText = log.description || log.type;
-        const nominalText = `${Math.abs(log.coins)} Coin`;
-        const timeText = log.displayDate || "-";
-        return `
-          <tr>
-            <td>${escapeHtml(pcText)}</td>
-            <td>${escapeHtml(userText)}</td>
-            <td class="type">${escapeHtml(typeText)}</td>
-            <td class="num">${escapeHtml(nominalText)}</td>
-            <td class="num">${escapeHtml(timeText)}</td>
-          </tr>
-        `;
-      })
-      .join("");
+    const periodText = `${formatDateReadable(startDate)} - ${formatDateReadable(endDate)}`;
+    const lines: string[] = [
+      "LAPORAN KEUANGAN ADMIN",
+      `Periode: ${periodText}`,
+      "",
+      `Total Pendapatan: ${formatRupiah(totalIncomeIdr)}`,
+      `Total Transaksi: ${totalTransactions} Transaksi`,
+      "",
+      "RIWAYAT TRANSAKSI",
+      "PC | User | Jenis Transaksi | Nominal | Waktu",
+      "------------------------------------------------------------",
+    ];
 
-    const html = `
-      <!doctype html>
-      <html>
-        <head>
-          <meta charset="utf-8" />
-          <title>${escapeHtml(title)}</title>
-          <style>
-            :root { color-scheme: light; }
-            body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; padding: 24px; }
-            h1 { font-size: 20px; margin: 0 0 8px; }
-            .muted { color: #4b5563; font-weight: 600; margin: 0 0 18px; }
-            .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 16px 0 18px; }
-            .card { border: 1px solid #e5e7eb; border-radius: 14px; padding: 14px 16px; }
-            .card .label { color: #4b5563; font-weight: 700; margin: 0 0 6px; }
-            .card .value { font-size: 18px; font-weight: 900; margin: 0; }
-            table { width: 100%; border-collapse: collapse; border: 1px solid #e5e7eb; border-radius: 14px; overflow: hidden; }
-            thead th { text-align: left; font-size: 12px; padding: 10px 12px; color: #6b7280; border-bottom: 1px solid #e5e7eb; }
-            tbody td { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; vertical-align: top; font-weight: 650; font-size: 13px; }
-            tbody tr:last-child td { border-bottom: none; }
-            .num { text-align: right; white-space: nowrap; }
-            .type { white-space: pre-line; }
-            @page { size: A4; margin: 12mm; }
-          </style>
-        </head>
-        <body>
-          <h1>${escapeHtml(title)}</h1>
-          <p class="muted">Periode: ${escapeHtml(safePeriod)}</p>
-          <div class="grid">
-            <div class="card">
-              <p class="label">Total Pendapatan</p>
-              <p class="value">${escapeHtml(formatRupiah(totalIncomeIdr))}</p>
-            </div>
-            <div class="card">
-              <p class="label">Total Transaksi</p>
-              <p class="value">${escapeHtml(`${totalTransactions} Transaksi`)}</p>
-            </div>
-          </div>
-          <h2 style="font-size:14px; margin:0 0 10px;">Riwayat Transaksi</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>PC</th>
-                <th>User</th>
-                <th>Jenis Transaksi</th>
-                <th class="num">Nominal</th>
-                <th class="num">Waktu</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rowsHtml || `<tr><td colspan="5" style="padding:14px; color:#6b7280;">Tidak ada transaksi pada periode ini.</td></tr>`}
-            </tbody>
-          </table>
-          <script>
-            window.onload = () => { window.print(); };
-          </script>
-        </body>
-      </html>
-    `;
+    if (!filteredLogs.length) {
+      lines.push("Tidak ada transaksi pada periode ini.");
+    } else {
+      for (const log of filteredLogs) {
+        const rowPrefix = `${log.pcId ? `PC ${log.pcId}` : "-"} | ${displayUsername(log)} | `;
+        const suffix = ` | ${Math.abs(log.coins)} Coin | ${log.displayDate || "-"}`;
+        const descLines = wrapText(log.description || log.type || "-", 48);
+        lines.push(`${rowPrefix}${descLines[0]}${suffix}`);
+        for (let i = 1; i < descLines.length; i += 1) {
+          lines.push(`    |     | ${descLines[i]}`);
+        }
+      }
+    }
 
-    const win = window.open("", "_blank", "noopener,noreferrer");
-    if (!win) return;
-    win.document.open();
-    win.document.write(html);
-    win.document.close();
+    const bytes = buildPdfBytes(lines);
+    const blob = new Blob([bytes], { type: "application/pdf" });
+    const fileName = `laporan-keuangan-${startDate || "awal"}_sampai_${endDate || "akhir"}.pdf`;
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const openDatePicker = (input: HTMLInputElement | null) => {
+    if (!input) return;
+    input.focus();
+    if ("showPicker" in input) {
+      (input as HTMLInputElement & { showPicker?: () => void }).showPicker?.();
+    }
   };
 
   return (
@@ -361,16 +406,25 @@ export default function LaporanKeuanganAdmin() {
               type="date"
               value={startDate}
               onChange={(e) => setRange((prev) => ({ ...prev, startDate: e.target.value }))}
+              onClick={(e) => openDatePicker(e.currentTarget)}
               aria-label="Tanggal Mulai"
             />
-            <span className="admin-finance-date-icon" aria-hidden="true">
+            <button
+              type="button"
+              className="admin-finance-date-icon"
+              aria-label="Pilih Tanggal Mulai"
+              onClick={(e) => {
+                const input = e.currentTarget.parentElement?.querySelector("input[type='date']") as HTMLInputElement | null;
+                openDatePicker(input);
+              }}
+            >
               <svg viewBox="0 0 24 24" fill="none">
                 <path d="M8 3v3" />
                 <path d="M16 3v3" />
                 <rect x="4" y="6" width="16" height="14" rx="2" />
                 <path d="M4 10h16" />
               </svg>
-            </span>
+            </button>
           </label>
           <span className="admin-finance-date-sep" aria-hidden="true">
             —
@@ -381,16 +435,25 @@ export default function LaporanKeuanganAdmin() {
               type="date"
               value={endDate}
               onChange={(e) => setRange((prev) => ({ ...prev, endDate: e.target.value }))}
+              onClick={(e) => openDatePicker(e.currentTarget)}
               aria-label="Tanggal Akhir"
             />
-            <span className="admin-finance-date-icon" aria-hidden="true">
+            <button
+              type="button"
+              className="admin-finance-date-icon"
+              aria-label="Pilih Tanggal Akhir"
+              onClick={(e) => {
+                const input = e.currentTarget.parentElement?.querySelector("input[type='date']") as HTMLInputElement | null;
+                openDatePicker(input);
+              }}
+            >
               <svg viewBox="0 0 24 24" fill="none">
                 <path d="M8 3v3" />
                 <path d="M16 3v3" />
                 <rect x="4" y="6" width="16" height="14" rx="2" />
                 <path d="M4 10h16" />
               </svg>
-            </span>
+            </button>
           </label>
         </div>
 
@@ -444,4 +507,3 @@ export default function LaporanKeuanganAdmin() {
     </section>
   );
 }
-

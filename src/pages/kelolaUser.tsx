@@ -150,7 +150,7 @@ export default function KelolaUser() {
             </span>
             Riwayat Transaksi
           </button>
-          <button className="admin-nav-item" type="button">
+          <button className="admin-nav-item" type="button" onClick={() => navigate("/app/laporan-keuangan-admin")}>
             <span className="admin-nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
                 <path d="M6 4h12v3H6z" />

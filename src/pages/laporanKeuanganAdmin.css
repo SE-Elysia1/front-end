@@ -44,7 +44,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  pointer-events: none;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
   color: var(--muted);
 }
 
@@ -88,7 +91,7 @@
 }
 
 .admin-finance-stat.income {
-  background: linear-gradient(90deg, #4f46e5, #6366f1);
+  background: linear-gradient(90deg, #2563eb, #3b82f6);
 }
 
 .admin-finance-stat.tx {
@@ -159,4 +162,3 @@
     min-width: 100%;
   }
 }
-
