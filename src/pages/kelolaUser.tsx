@@ -48,7 +48,7 @@ export default function KelolaUser() {
     if (!authToken || !userId) return;
     setIsLoading(true);
     try {
-      const response = await fetch(`${BASEURL}/api/admin/user/${userId}`, {
+      const response = await fetch(`${BASEURL}/api/admin/users`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       if (!response.ok) throw new Error("Gagal ambil data user");

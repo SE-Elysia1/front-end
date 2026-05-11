@@ -117,7 +117,7 @@ export default function HistoryAdmin() {
       setIsLoading(true);
       setErrorMessage("");
       try {
-        const endpoint = "/api/admin/orders";
+        const endpoint = "/api/logs";
         const base = typeof BASEURL === "string" && BASEURL.trim().length ? BASEURL.trim() : window.location.origin;
         const baseUrl = new URL(endpoint, base);
 
@@ -150,7 +150,7 @@ export default function HistoryAdmin() {
           // ignore, fallback below
         }
         if (list.length === 0) {
-          // Banyak backend ga support param from/to; ambil semua lalu filter di client.
+          // you wheelchair
           list = await requestOnce(false);
         }
 

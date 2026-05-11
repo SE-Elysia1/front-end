@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./dashboardAdmin.css";
 
 const BASEURL = import.meta.env.VITE_BASEURL;
-const TOTAL_PC = Number.parseInt(import.meta.env.VITE_TOTAL_PC ?? "12", 10);
 const COIN_TO_IDR = 2000;
 
 type AdminLogEntry = {
@@ -16,6 +15,14 @@ type AdminLogEntry = {
   pcId: number | null;
   createdAt: number;
   displayDate: string;
+};
+
+type PcEntry = {
+  id: number;
+  pcNumber: string;
+  status: string;
+  currentUserId: number | null;
+  sessionEndTime: number | null;
 };
 
 const toNumber = (value: unknown) => {
@@ -62,12 +69,17 @@ export default function DashboardAdmin() {
   const [usernameByUserId, setUsernameByUserId] = useState<Record<number, string>>({});
   const [activeUsersCount, setActiveUsersCount] = useState(0);
   const [usedPcCount, setUsedPcCount] = useState(0);
+  const [totalPcCount, setTotalPcCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
 
-  const userId = useMemo(() => localStorage.getItem("userId"), []);
-  const localUsername = useMemo(() => localStorage.getItem("username")?.trim() ?? "", []);
-  const authToken = useMemo(() => localStorage.getItem("token")?.trim() ?? "", []);
-  const role = useMemo(() => localStorage.getItem("role")?.toLowerCase() ?? "user", []);
+ 
+  const [userId] = useState(() => localStorage.getItem("userId"));
+  const [localUsername] = useState(() => localStorage.getItem("username")?.trim() ?? "");
+  const [authToken] = useState(() => localStorage.getItem("token")?.trim() ?? "");
+  const [role] = useState(() => localStorage.getItem("role")?.toLowerCase() ?? "user");
+
+ 
+  const fetchingUserIds = useRef<Set<number>>(new Set());
 
   const todayIncome = useMemo(() => {
     const todayTopups = logs.filter((log) => log.type === "topup" && log.coins > 0 && isToday(log.createdAt));
@@ -128,106 +140,68 @@ export default function DashboardAdmin() {
     setLogs(sorted);
   }, [authToken, userId]);
 
-  const fetchActiveUsers = useCallback(async () => {
+  const fetchPcs = useCallback(async () => {
     if (!authToken) return;
-    const candidateEndpoints = ["/api/users/active", "/api/user/active", "/api/active-users", "/api/sessions/active"];
-    for (const path of candidateEndpoints) {
-      try {
-        const response = await fetch(`${BASEURL}${path}`, {
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
-        if (!response.ok) continue;
-        const payload: unknown = await response.json();
-        if (Array.isArray(payload)) {
-          setActiveUsersCount(payload.length);
-          return;
-        }
-        if (payload && typeof payload === "object") {
-          const obj = payload as Record<string, unknown>;
-          const direct = toNumber(obj.count) ?? toNumber(obj.total) ?? toNumber(obj.activeUsers);
-          if (direct !== null) {
-            setActiveUsersCount(direct);
-            return;
-          }
-          const data = obj.data;
-          if (Array.isArray(data)) {
-            setActiveUsersCount(data.length);
-            return;
-          }
-          if (data && typeof data === "object") {
-            const dataObj = data as Record<string, unknown>;
-            const nested = toNumber(dataObj.count) ?? toNumber(dataObj.total) ?? toNumber(dataObj.activeUsers);
-            if (nested !== null) {
-              setActiveUsersCount(nested);
-              return;
-            }
-          }
-        }
-      } catch {
-        continue;
-      }
-    }
-  }, [authToken]);
-
-  const fetchPcUsage = useCallback(async () => {
-    if (!authToken) return;
-    let payload: unknown;
     try {
-      const response = await fetch(`${BASEURL}/api/pctimer`, {
+      const response = await fetch(`${BASEURL}/api/pcs`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
-      if (!response.ok) {
-        setUsedPcCount(0);
-        return;
-      }
-      payload = await response.json();
-    } catch {
-      setUsedPcCount(0);
-      return;
-    }
+      if (!response.ok) return;
+      const payload: unknown = await response.json();
+      // API returns { success: true, data: [...] } — unwrap the envelope.
+      // Fall back to treating the payload itself as an array for bare responses.
+      const rawRows =
+        payload &&
+        typeof payload === "object" &&
+        Array.isArray((payload as Record<string, unknown>).data)
+          ? (payload as Record<string, unknown>).data
+          : payload;
+      const rows: unknown[] = Array.isArray(rawRows) ? rawRows : [];
 
-    if (Array.isArray(payload)) {
-      const activeCount = payload.filter((item) => {
-        if (!item || typeof item !== "object") return false;
-        const obj = item as Record<string, unknown>;
-        const endTime = toNumber(obj.sessionEndTime) ?? toNumber(obj.endTime) ?? toNumber(obj.expiredAt);
-        if (endTime !== null) return toDateMs(endTime) > Date.now();
-        return obj.status === "online" || obj.isActive === true || obj.active === true;
-      }).length;
+      const pcs: PcEntry[] = rows
+        .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+        .map((item) => ({
+          id: toNumber(item.id) ?? 0,
+          pcNumber: toNonEmptyString(item.pcNumber) ?? "-",
+          status: toNonEmptyString(item.status) ?? "offline",
+          currentUserId: toNumber(item.currentUserId),
+          sessionEndTime: toNumber(item.sessionEndTime),
+        }));
+
+      const activeCount = pcs.filter((pc) => pc.status === "online").length;
+
+      setTotalPcCount(pcs.length);
       setUsedPcCount(activeCount);
-      return;
-    }
-
-    if (payload && typeof payload === "object") {
-      const obj = payload as Record<string, unknown>;
-      const direct = toNumber(obj.activeCount) ?? toNumber(obj.usedPc) ?? toNumber(obj.inUse);
-      if (direct !== null) {
-        setUsedPcCount(direct);
-        return;
-      }
-      const data = obj.data;
-      if (Array.isArray(data)) {
-        const activeCount = data.filter((item) => {
-          if (!item || typeof item !== "object") return false;
-          const itemObj = item as Record<string, unknown>;
-          const endTime = toNumber(itemObj.sessionEndTime) ?? toNumber(itemObj.endTime) ?? toNumber(itemObj.expiredAt);
-          if (endTime !== null) return toDateMs(endTime) > Date.now();
-          return itemObj.status === "online" || itemObj.isActive === true || itemObj.active === true;
-        }).length;
-        setUsedPcCount(activeCount);
-      }
+      setActiveUsersCount(activeCount);
+    } catch {
+      // Network failure — leave previous values in place rather than
+      // resetting to 0, which would show misleading zeros to the admin.
     }
   }, [authToken]);
 
-  const fetchMissingUsernames = useCallback(async () => {
-    const missingIds = [...new Set(logs.map((log) => log.userId))]
-      .filter((id) => id > 0)
-      .filter((id) => !usernameByUserId[id] && !logs.find((log) => log.userId === id && log.username));
 
-    if (missingIds.length === 0) return;
+  const fetchMissingUsernames = useCallback(async () => {
+    if (!authToken) return;
+
+    const ids = Array.from(new Set(logs.map((log) => log.userId)))
+      .filter((id) => id > 0)
+      .filter((id) => {
+        // Skip if already in-flight.
+        if (fetchingUserIds.current.has(id)) return false;
+        // Skip if the log entry itself already carries a username.
+        const hasInlineUsername = logs.some(
+          (log) => log.userId === id && toNonEmptyString(log.username),
+        );
+        return !hasInlineUsername;
+      });
+
+    if (!ids.length) return;
+
+    // Mark all as in-flight before any await.
+    for (const id of ids) fetchingUserIds.current.add(id);
 
     const entries = await Promise.all(
-      missingIds.map(async (id) => {
+      ids.map(async (id) => {
         try {
           const response = await fetch(`${BASEURL}/api/user/${id}`, {
             headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
@@ -259,12 +233,15 @@ export default function DashboardAdmin() {
     const valid = entries.filter((entry): entry is readonly [number, string] => !!entry);
     if (!valid.length) return;
 
+    // Functional updater: no need for usernameByUserId in deps.
     setUsernameByUserId((prev) => {
       const next = { ...prev };
       for (const [id, username] of valid) next[id] = username;
       return next;
     });
-  }, [authToken, logs, usernameByUserId]);
+  }, [authToken, logs]);
+  // Deps: authToken stable (useState initializer). logs changes only when
+  // fetchLogs resolves. Neither dep causes a loop.
 
   useEffect(() => {
     if (role !== "admin") {
@@ -275,13 +252,13 @@ export default function DashboardAdmin() {
     const load = async () => {
       setIsLoading(true);
       try {
-        await Promise.all([fetchLogs(), fetchActiveUsers(), fetchPcUsage()]);
+        await Promise.all([fetchLogs(), fetchPcs()]);
       } finally {
         setIsLoading(false);
       }
     };
     load();
-  }, [fetchActiveUsers, fetchLogs, fetchPcUsage, navigate, role]);
+  }, [fetchLogs, fetchPcs, navigate, role]);
 
   useEffect(() => {
     fetchMissingUsernames();
@@ -389,7 +366,7 @@ export default function DashboardAdmin() {
           </article>
           <article className="card admin-mini-card">
             <p>PC Terpakai</p>
-            <h4>{isLoading ? "..." : `${usedPcCount} / ${Number.isFinite(TOTAL_PC) ? TOTAL_PC : 12}`}</h4>
+            <h4>{isLoading ? "..." : `${usedPcCount} / ${totalPcCount}`}</h4>
           </article>
         </div>
 

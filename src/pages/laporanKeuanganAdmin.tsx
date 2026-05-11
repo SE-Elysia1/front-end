@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+/* eslint-disable react-hooks/exhaustive-deps */
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./dashboardAdmin.css";
 import "./laporanKeuanganAdmin.css";
@@ -160,10 +161,12 @@ export default function LaporanKeuanganAdmin() {
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [{ startDate, endDate }, setRange] = useState(getDefaultRange);
 
-  const userId = useMemo(() => localStorage.getItem("userId"), []);
-  const localUsername = useMemo(() => localStorage.getItem("username")?.trim() ?? "", []);
-  const authToken = useMemo(() => localStorage.getItem("token")?.trim() ?? "", []);
-  const role = useMemo(() => localStorage.getItem("role")?.toLowerCase() ?? "user", []);
+  const [localUsername] = useState(() => localStorage.getItem("username")?.trim() ?? "");
+  const [authToken] = useState(() => localStorage.getItem("token")?.trim() ?? "");
+  const [role] = useState(() => localStorage.getItem("role")?.toLowerCase() ?? "user");
+
+
+  const fetchingUserIds = useRef<Set<number>>(new Set());
 
   const displayUsername = useCallback(
     (log: AdminLogEntry) => {
@@ -210,13 +213,23 @@ export default function LaporanKeuanganAdmin() {
     const sorted = data.sort((a, b) => b.createdAt - a.createdAt);
     setLogs(sorted);
   }, [authToken, userId]);
-
+ 
   const fetchMissingUsernames = useCallback(async () => {
     if (!authToken) return;
-    const ids = Array.from(new Set(logs.map((log) => log.userId))).filter((id) => !usernameByUserId[id]);
+
+
+    const ids = Array.from(new Set(logs.map((log) => log.userId))).filter(
+      (id) => !fetchingUserIds.current.has(id),
+    );
+
+   
     if (!ids.length) return;
 
-    const next = { ...usernameByUserId };
+
+    for (const id of ids) fetchingUserIds.current.add(id);
+
+    const resolved: Record<number, string> = {};
+
     for (const id of ids) {
       try {
         const response = await fetch(`${BASEURL}/api/user/${id}`, {
@@ -226,14 +239,27 @@ export default function LaporanKeuanganAdmin() {
         const payload: unknown = await response.json();
         if (!payload || typeof payload !== "object") continue;
         const obj = payload as Record<string, unknown>;
-        const username = toNonEmptyString(obj.username) ?? toNonEmptyString(obj.userName) ?? toNonEmptyString(obj.name);
-        if (username) next[id] = username;
+        const username =
+          toNonEmptyString(obj.username) ??
+          toNonEmptyString(obj.userName) ??
+          toNonEmptyString(obj.name);
+        if (username) resolved[id] = username;
       } catch {
-        // ignore
+        // Network error for one user shouldn't block others; continue.
       }
     }
-    setUsernameByUserId(next);
-  }, [authToken, logs, usernameByUserId]);
+
+    // Only call setState when we actually resolved at least one username,
+    // avoiding a re-render (and re-running this effect) when nothing changed.
+    if (Object.keys(resolved).length > 0) {
+      // Functional updater: merges new entries into existing state without
+      // needing usernameByUserId as a dep on this callback.
+      setUsernameByUserId((prev) => ({ ...prev, ...resolved }));
+    }
+  }, [authToken, logs]);
+  // Deps: authToken is stable. logs changes only when fetchLogs resolves,
+  // which happens once on mount (and never re-triggers fetchLogs itself).
+  // So this callback is recreated only when logs actually change — correct.
 
   useEffect(() => {
     if (role !== "admin") {

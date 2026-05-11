@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./dashboardAdmin.css";
 import "./monitoringAdmin.css";
 
 const BASEURL = import.meta.env.VITE_BASEURL;
-const TOTAL_PC = Number.parseInt(import.meta.env.VITE_TOTAL_PC ?? "12", 10);
 
 const toNumber = (value: unknown) => {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -13,6 +12,12 @@ const toNumber = (value: unknown) => {
     if (Number.isFinite(parsed)) return parsed;
   }
   return null;
+};
+
+const toNonEmptyString = (value: unknown) => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
 };
 
 const toDateMs = (value: number) => (value < 1_000_000_000_000 ? value * 1000 : value);
@@ -35,60 +40,58 @@ const resolvePcId = () => {
   return null;
 };
 
-type PcStatus = {
-  pcId: number;
-  endTimeMs: number | null;
+type PcEntry = {
+  id: number;
+  pcNumber: string;
+  status: string;
+  sessionEndTime: number | null; 
 };
 
 export default function MonitoringAdmin() {
   const navigate = useNavigate();
-  const [pcStatusById, setPcStatusById] = useState<Record<number, PcStatus>>({});
+  const [pcs, setPcs] = useState<PcEntry[]>([]);
   const [tick, setTick] = useState(0);
 
-  const authToken = useMemo(() => localStorage.getItem("token")?.trim() ?? "", []);
-  const role = useMemo(() => localStorage.getItem("role")?.toLowerCase() ?? "user", []);
 
-  const pcIds = useMemo(() => {
-    const total = Number.isFinite(TOTAL_PC) && TOTAL_PC > 0 ? TOTAL_PC : 12;
-    return Array.from({ length: total }, (_, idx) => idx + 1);
-  }, []);
+  const [authToken] = useState(() => localStorage.getItem("token")?.trim() ?? "");
+  const [role] = useState(() => localStorage.getItem("role")?.toLowerCase() ?? "user");
 
-  const fetchPcTimers = useCallback(async () => {
+  const fetchPcs = useCallback(async () => {
     if (!authToken) return;
     try {
-      const response = await fetch(`${BASEURL}/api/pctimer`, {
+      const response = await fetch(`${BASEURL}/api/pcs`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       if (!response.ok) return;
       const payload: unknown = await response.json();
 
-      const rows = Array.isArray(payload)
-        ? payload
-        : payload && typeof payload === "object" && Array.isArray((payload as Record<string, unknown>).data)
-          ? ((payload as Record<string, unknown>).data as unknown[])
-          : [];
+  
+      const rawRows =
+        payload &&
+        typeof payload === "object" &&
+        Array.isArray((payload as Record<string, unknown>).data)
+          ? (payload as Record<string, unknown>).data
+          : payload;
+      const rows: unknown[] = Array.isArray(rawRows) ? rawRows : [];
 
-      const next: Record<number, PcStatus> = {};
-      for (const row of rows) {
-        if (!row || typeof row !== "object") continue;
-        const obj = row as Record<string, unknown>;
-        const pcId = toNumber(obj.pcId) ?? toNumber(obj.id) ?? toNumber(obj.pc);
-        if (!pcId) continue;
+      const entries: PcEntry[] = rows
+        .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+        .map((item) => {
+          const rawEndTime = toNumber(item.sessionEndTime);
+          return {
+            id: toNumber(item.id) ?? 0,
+            pcNumber: toNonEmptyString(item.pcNumber) ?? "-",
+            status: toNonEmptyString(item.status) ?? "vacant",
+            // Normalise to ms; null stays null.
+            sessionEndTime: rawEndTime !== null ? toDateMs(rawEndTime) : null,
+          };
+        })
+        .filter((pc) => pc.id > 0)
+        .sort((a, b) => a.id - b.id);
 
-        const endTime =
-          toNumber(obj.sessionEndTime) ??
-          toNumber(obj.endTime) ??
-          toNumber(obj.expiredAt) ??
-          toNumber(obj.session_end_time);
-
-        const endTimeMs = endTime !== null ? toDateMs(endTime) : null;
-
-        next[pcId] = { pcId, endTimeMs };
-      }
-
-      setPcStatusById(next);
+      setPcs(entries);
     } catch {
-      // ignore
+      // Network failure — keep previous state so the grid doesn't go blank.
     }
   }, [authToken]);
 
@@ -97,11 +100,12 @@ export default function MonitoringAdmin() {
       navigate("/app/dashboard", { replace: true });
       return;
     }
-    fetchPcTimers();
-    const poll = window.setInterval(fetchPcTimers, 15_000);
+    fetchPcs();
+    const poll = window.setInterval(fetchPcs, 15_000);
     return () => window.clearInterval(poll);
-  }, [fetchPcTimers, navigate, role]);
+  }, [fetchPcs, navigate, role]);
 
+  // Tick every second to drive the countdown timers.
   useEffect(() => {
     const interval = window.setInterval(() => setTick((x) => x + 1), 1000);
     return () => window.clearInterval(interval);
@@ -126,7 +130,7 @@ export default function MonitoringAdmin() {
     }
   };
 
-  const now = Date.now() + tick;
+  const now = Date.now() + tick * 0; // tick reference keeps this reactive; Date.now() is always fresh
 
   return (
     <section className="admin-dashboard-page">
@@ -204,14 +208,16 @@ export default function MonitoringAdmin() {
         </header>
 
         <section className="monitoring-grid" aria-label="Monitoring PC">
-          {pcIds.map((pcId) => {
-            const status = pcStatusById[pcId];
-            const endTimeMs = status?.endTimeMs ?? null;
-            const secondsLeft = endTimeMs ? Math.floor((endTimeMs - now) / 1000) : 0;
-            const isUsed = endTimeMs ? endTimeMs > now : false;
+          {pcs.map((pc) => {
+            // Used = status is "online", full stop.
+            // Timer is a separate concern: only show countdown if sessionEndTime
+            // is set AND in the future. Online with no timer = Used but show "--".
+            const isUsed = pc.status === "online";
+            const hasTimer = isUsed && pc.sessionEndTime !== null && pc.sessionEndTime > now;
+            const secondsLeft = hasTimer ? Math.floor((pc.sessionEndTime! - now) / 1000) : 0;
 
             return (
-              <article key={pcId} className="pc-card">
+              <article key={pc.id} className="pc-card">
                 <div className="pc-card-title">
                   <span className="pc-icon" aria-hidden="true">
                     <svg viewBox="0 0 24 24" fill="none">
@@ -220,12 +226,16 @@ export default function MonitoringAdmin() {
                       <path d="M12 16v4" />
                     </svg>
                   </span>
-                  <span className="pc-name">{`PC ${pcId}`}</span>
+                  <span className="pc-name">{pc.pcNumber}</span>
                 </div>
 
-                <p className="pc-timer">{isUsed ? formatDuration(secondsLeft) : "--"}</p>
+                <p className={`pc-timer${isUsed ? " pc-timer--used" : ""}`}>
+                  {hasTimer ? formatDuration(secondsLeft) : "--"}
+                </p>
 
-                <span className={`pc-badge ${isUsed ? "used" : "empty"}`}>{isUsed ? "Used" : "Kosong"}</span>
+                <span className={`pc-badge ${isUsed ? "used" : "empty"}`}>
+                  {isUsed ? "Terpakai" : "Kosong"}
+                </span>
               </article>
             );
           })}
