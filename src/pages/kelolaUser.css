@@ -109,7 +109,7 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  cursor: not-allowed;
+  cursor: pointer;
   opacity: 0.9;
 }
 
@@ -137,4 +137,211 @@
   .kelola-user-table-row {
     grid-template-columns: repeat(3, minmax(160px, 1fr));
   }
+}
+
+/* ─────────────────────────────────────────────
+   Tambahan: Modal & Toast
+───────────────────────────────────────────── */
+
+.kelola-user-iconbtn:hover svg {
+  stroke: #6366f1;
+}
+
+.kelola-user-iconbtn--danger:hover svg {
+  stroke: #ef4444;
+}
+
+/* Overlay */
+.kelola-user-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: kuFadeIn 0.15s ease;
+}
+
+@keyframes kuFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Modal box */
+.kelola-user-modal {
+  background: #fff;
+  border-radius: 12px;
+  padding: 28px 32px;
+  width: 100%;
+  max-width: 420px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+  animation: kuSlideUp 0.18s ease;
+}
+
+@keyframes kuSlideUp {
+  from { transform: translateY(16px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.kelola-user-modal-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  margin: 0 0 4px;
+  color: var(--text);
+}
+
+.kelola-user-modal-title--danger {
+  color: #dc2626;
+}
+
+.kelola-user-modal-subtitle {
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0 0 20px;
+}
+
+.kelola-user-modal-body {
+  font-size: 0.9rem;
+  color: var(--text);
+  line-height: 1.6;
+  margin: 0 0 20px;
+}
+
+/* Form fields */
+.kelola-user-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.kelola-user-modal-field label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.kelola-user {
+  font-weight: 400;
+}
+
+.kelola-user-modal-field input {
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.kelola-user-modal-field input:focus {
+  border-color: #6366f1;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+.kelola-user-modal-field input:disabled {
+  background: #f8fafc;
+  color: var(--muted);
+}
+
+/* Error */
+.kelola-user-modal-error {
+  font-size: 0.82rem;
+  color: #dc2626;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+}
+
+/* Actions */
+.kelola-user-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.kelola-user-modal-btn {
+  padding: 9px 20px;
+  border-radius: 10px;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.kelola-user-modal-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.kelola-user-modal-btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.kelola-user-modal-btn--cancel {
+  background: #f1f5f9;
+  color: var(--muted);
+}
+
+.kelola-user-modal-btn--cancel:hover:not(:disabled) {
+  background: #e2e8f0;
+}
+
+.kelola-user-modal-btn--confirm {
+  background: #6366f1;
+  color: #fff;
+}
+
+.kelola-user-modal-btn--confirm:hover:not(:disabled) {
+  background: #4f46e5;
+}
+
+.kelola-user-modal-btn--danger {
+  background: #ef4444;
+  color: #fff;
+}
+
+.kelola-user-modal-btn--danger:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+/* Toast */
+.kelola-user-toast {
+  position: fixed;
+  bottom: 28px;
+  right: 28px;
+  z-index: 2000;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-size: 0.88rem;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
+  animation: kuToastIn 0.2s ease;
+  max-width: 320px;
+}
+
+@keyframes kuToastIn {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.kelola-user-toast--success {
+  background: #f0fdf4;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.kelola-user-toast--error {
+  background: #fef2f2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
 }

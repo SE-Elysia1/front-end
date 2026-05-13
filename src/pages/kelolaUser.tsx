@@ -34,16 +34,64 @@ type ManagedUserRow = {
   balanceCoin: number;
 };
 
+type EditModalState = {
+  open: boolean;
+  userId: number | null;
+  username: string;
+  newUsername: string;
+  newPassword: string;
+  confirmPassword: string;
+  isLoading: boolean;
+  error: string | null;
+};
+
+type DeleteModalState = {
+  open: boolean;
+  userId: number | null;
+  username: string;
+  isLoading: boolean;
+  error: string | null;
+};
+
+const EDIT_MODAL_DEFAULT: EditModalState = {
+  open: false,
+  userId: null,
+  username: "",
+  newUsername: "",
+  newPassword: "",
+  confirmPassword: "",
+  isLoading: false,
+  error: null,
+};
+
+const DELETE_MODAL_DEFAULT: DeleteModalState = {
+  open: false,
+  userId: null,
+  username: "",
+  isLoading: false,
+  error: null,
+};
+
 export default function KelolaUser() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
   const [rows, setRows] = useState<ManagedUserRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [editModal, setEditModal] = useState<EditModalState>(EDIT_MODAL_DEFAULT);
+  const [deleteModal, setDeleteModal] = useState<DeleteModalState>(DELETE_MODAL_DEFAULT);
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   const userId = useMemo(() => localStorage.getItem("userId")?.trim() ?? "", []);
   const authToken = useMemo(() => localStorage.getItem("token")?.trim() ?? "", []);
   const role = useMemo(() => localStorage.getItem("role")?.toLowerCase() ?? "user", []);
 
+  // ── Toast helper ──────────────────────────────────────────────
+  const showToast = (message: string, type: "success" | "error") => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // ── Fetch users ───────────────────────────────────────────────
   const fetchUsers = useCallback(async () => {
     if (!authToken || !userId) return;
     setIsLoading(true);
@@ -93,6 +141,7 @@ export default function KelolaUser() {
     fetchUsers();
   }, [fetchUsers, navigate, role]);
 
+  // ── Logout ────────────────────────────────────────────────────
   const handleLogout = async () => {
     const pcId = resolvePcId();
     try {
@@ -112,19 +161,239 @@ export default function KelolaUser() {
     }
   };
 
+  // ── Edit handlers ─────────────────────────────────────────────
+  const openEditModal = (row: ManagedUserRow) => {
+    setEditModal({
+      ...EDIT_MODAL_DEFAULT,
+      open: true,
+      userId: row.id,
+      username: row.username,
+      newUsername: row.username,
+    });
+  };
+
+  const closeEditModal = () => {
+    if (editModal.isLoading) return;
+    setEditModal(EDIT_MODAL_DEFAULT);
+  };
+
+  const handleEditSubmit = async () => {
+    const { userId: targetId, newUsername, newPassword, confirmPassword } = editModal;
+    if (!targetId) return;
+
+    // Validation
+    if (!newUsername.trim()) {
+      setEditModal((prev) => ({ ...prev, error: "Username tidak boleh kosong." }));
+      return;
+    }
+    if (newPassword && newPassword !== confirmPassword) {
+      setEditModal((prev) => ({ ...prev, error: "Konfirmasi password tidak cocok." }));
+      return;
+    }
+
+    const body: Record<string, string> = {};
+    if (newUsername.trim() !== editModal.username) body.newUsername = newUsername.trim();
+    if (newPassword) body.newPassword = newPassword;
+
+    if (Object.keys(body).length === 0) {
+      setEditModal((prev) => ({ ...prev, error: "Tidak ada perubahan yang dilakukan." }));
+      return;
+    }
+
+    setEditModal((prev) => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const response = await fetch(`${BASEURL}/api/admin/user/${targetId}/override`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${authToken}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error((errData as Record<string, string>).message ?? `Error ${response.status}`);
+      }
+
+      showToast(`User "${editModal.username}" berhasil diperbarui.`, "success");
+      setEditModal(EDIT_MODAL_DEFAULT);
+      fetchUsers();
+    } catch (err) {
+      setEditModal((prev) => ({
+        ...prev,
+        isLoading: false,
+        error: err instanceof Error ? err.message : "Terjadi kesalahan.",
+      }));
+    }
+  };
+
+  // ── Delete handlers ───────────────────────────────────────────
+  const openDeleteModal = (row: ManagedUserRow) => {
+    setDeleteModal({ ...DELETE_MODAL_DEFAULT, open: true, userId: row.id, username: row.username });
+  };
+
+  const closeDeleteModal = () => {
+    if (deleteModal.isLoading) return;
+    setDeleteModal(DELETE_MODAL_DEFAULT);
+  };
+
+  const handleDeleteConfirm = async () => {
+    const { userId: targetId, username } = deleteModal;
+    if (!targetId) return;
+
+    setDeleteModal((prev) => ({ ...prev, isLoading: true, error: null }));
+    try {
+      const response = await fetch(`${BASEURL}/api/admin/user/${targetId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${authToken}` },
+      });
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error((errData as Record<string, string>).message ?? `Error ${response.status}`);
+      }
+
+      showToast(`User "${username}" berhasil dihapus.`, "success");
+      setDeleteModal(DELETE_MODAL_DEFAULT);
+      fetchUsers();
+    } catch (err) {
+      setDeleteModal((prev) => ({
+        ...prev,
+        isLoading: false,
+        error: err instanceof Error ? err.message : "Terjadi kesalahan.",
+      }));
+    }
+  };
+
+  // ── Filter ────────────────────────────────────────────────────
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return rows;
     return rows.filter((row) => row.username.toLowerCase().includes(q));
   }, [query, rows]);
 
+  // ── Render ────────────────────────────────────────────────────
   return (
     <section className="admin-dashboard-page">
+      {/* ── Toast ── */}
+      {toast && (
+        <div
+          className={`kelola-user-toast kelola-user-toast--${toast.type}`}
+          role="alert"
+          aria-live="polite"
+        >
+          {toast.message}
+        </div>
+      )}
+
+      {/* ── Edit Modal ── */}
+      {editModal.open && (
+        <div className="kelola-user-modal-overlay" onClick={closeEditModal} role="dialog" aria-modal="true" aria-label="Edit User">
+          <div className="kelola-user-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="kelola-user-modal-title">Edit User</h3>
+            <p className="kelola-user-modal-subtitle">Mengedit: <strong>{editModal.username}</strong></p>
+
+            <div className="kelola-user-modal-field">
+              <label htmlFor="edit-username">Username Baru</label>
+              <input
+                id="edit-username"
+                type="text"
+                value={editModal.newUsername}
+                onChange={(e) => setEditModal((prev) => ({ ...prev, newUsername: e.target.value, error: null }))}
+                disabled={editModal.isLoading}
+                autoComplete="off"
+              />
+            </div>
+
+            <div className="kelola-user-modal-field">
+              <label htmlFor="edit-password">Password Baru <span className="kelola-user"></span></label>
+              <input
+                id="edit-password"
+                type="password"
+                value={editModal.newPassword}
+                onChange={(e) => setEditModal((prev) => ({ ...prev, newPassword: e.target.value, error: null }))}
+                disabled={editModal.isLoading}
+                placeholder="Isi Password Baru"
+                autoComplete="new-password"
+              />
+            </div>
+
+            {editModal.newPassword && (
+              <div className="kelola-user-modal-field">
+                <label htmlFor="edit-confirm-password">Konfirmasi Password</label>
+                <input
+                  id="edit-confirm-password"
+                  type="password"
+                  value={editModal.confirmPassword}
+                  onChange={(e) => setEditModal((prev) => ({ ...prev, confirmPassword: e.target.value, error: null }))}
+                  disabled={editModal.isLoading}
+                  autoComplete="new-password"
+                />
+              </div>
+            )}
+
+            {editModal.error && <p className="kelola-user-modal-error">{editModal.error}</p>}
+
+            <div className="kelola-user-modal-actions">
+              <button
+                type="button"
+                className="kelola-user-modal-btn kelola-user-modal-btn--cancel"
+                onClick={closeEditModal}
+                disabled={editModal.isLoading}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                className="kelola-user-modal-btn kelola-user-modal-btn--confirm"
+                onClick={handleEditSubmit}
+                disabled={editModal.isLoading}
+              >
+                {editModal.isLoading ? "Menyimpan..." : "Simpan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Confirm Modal ── */}
+      {deleteModal.open && (
+        <div className="kelola-user-modal-overlay" onClick={closeDeleteModal} role="dialog" aria-modal="true" aria-label="Hapus User">
+          <div className="kelola-user-modal" onClick={(e) => e.stopPropagation()}>
+            <h3 className="kelola-user-modal-title kelola-user-modal-title--danger">Hapus User</h3>
+            <p className="kelola-user-modal-body">
+              Apakah kamu yakin ingin menghapus user <strong>{deleteModal.username}</strong>?
+              Tindakan ini tidak dapat dibatalkan.
+            </p>
+
+            {deleteModal.error && <p className="kelola-user-modal-error">{deleteModal.error}</p>}
+
+            <div className="kelola-user-modal-actions">
+              <button
+                type="button"
+                className="kelola-user-modal-btn kelola-user-modal-btn--cancel"
+                onClick={closeDeleteModal}
+                disabled={deleteModal.isLoading}
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                className="kelola-user-modal-btn kelola-user-modal-btn--danger"
+                onClick={handleDeleteConfirm}
+                disabled={deleteModal.isLoading}
+              >
+                {deleteModal.isLoading ? "Menghapus..." : "Hapus"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <aside className="admin-sidebar">
         <div className="admin-brand">
-          <span className="admin-brand-icon" aria-hidden="true">
-            BW
-          </span>
+          <span className="admin-brand-icon" aria-hidden="true">BW</span>
           <div>
             <p className="admin-brand-title">Billing Warnet</p>
             <p className="admin-brand-subtitle">Sistem Billing Digital</p>
@@ -142,10 +411,7 @@ export default function KelolaUser() {
           <button className="admin-nav-item" type="button" onClick={() => navigate("/app/monitoring-admin")}>
             <span className="admin-nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
-                <path d="M12 3v4" />
-                <path d="M12 17v4" />
-                <path d="M3 12h4" />
-                <path d="M17 12h4" />
+                <path d="M12 3v4M12 17v4M3 12h4M17 12h4" />
                 <rect x="7" y="7" width="10" height="10" rx="2" />
               </svg>
             </span>
@@ -156,8 +422,7 @@ export default function KelolaUser() {
               <svg viewBox="0 0 24 24" fill="none">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
                 <circle cx="9.5" cy="7" r="4" />
-                <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+                <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
               </svg>
             </span>
             Kelola User
@@ -165,9 +430,7 @@ export default function KelolaUser() {
           <button className="admin-nav-item" type="button" onClick={() => navigate("/app/history-admin")}>
             <span className="admin-nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
-                <path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6" />
-                <path d="M4 4v4.6h4.6" />
-                <path d="M12 8v4l3 2" />
+                <path d="M4 12a8 8 0 1 0 2.3-5.7L4 8.6M4 4v4.6h4.6M12 8v4l3 2" />
               </svg>
             </span>
             Riwayat Transaksi
@@ -175,9 +438,7 @@ export default function KelolaUser() {
           <button className="admin-nav-item" type="button" onClick={() => navigate("/app/laporan-keuangan-admin")}>
             <span className="admin-nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
-                <path d="M6 4h12v3H6z" />
-                <path d="M6 10h12v3H6z" />
-                <path d="M6 16h12v3H6z" />
+                <path d="M6 4h12v3H6zM6 10h12v3H6zM6 16h12v3H6z" />
               </svg>
             </span>
             Laporan Keuangan
@@ -226,19 +487,25 @@ export default function KelolaUser() {
                   <span className="kelola-user-username">{row.username}</span>
                   <span className="kelola-user-balance">{row.balanceCoin} Coin</span>
                   <span className="kelola-user-aksi">
-                    <button type="button" className="kelola-user-iconbtn" aria-label="Edit" disabled>
+                    <button
+                      type="button"
+                      className="kelola-user-iconbtn"
+                      aria-label={`Edit ${row.username}`}
+                      onClick={() => openEditModal(row)}
+                    >
                       <svg viewBox="0 0 24 24" fill="none">
                         <path d="M12 20h9" />
                         <path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5Z" />
                       </svg>
                     </button>
-                    <button type="button" className="kelola-user-iconbtn" aria-label="Delete" disabled>
+                    <button
+                      type="button"
+                      className="kelola-user-iconbtn kelola-user-iconbtn--danger"
+                      aria-label={`Hapus ${row.username}`}
+                      onClick={() => openDeleteModal(row)}
+                    >
                       <svg viewBox="0 0 24 24" fill="none">
-                        <path d="M3 6h18" />
-                        <path d="M8 6V4h8v2" />
-                        <path d="M6 6l1 16h10l1-16" />
-                        <path d="M10 11v6" />
-                        <path d="M14 11v6" />
+                        <path d="M3 6h18M8 6V4h8v2M6 6l1 16h10l1-16M10 11v6M14 11v6" />
                       </svg>
                     </button>
                   </span>
