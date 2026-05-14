@@ -1,4 +1,4 @@
-/* eslint-disable react-hooks/exhaustive-deps */
+ 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./dashboardAdmin.css";
@@ -160,7 +160,7 @@ export default function LaporanKeuanganAdmin() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [{ startDate, endDate }, setRange] = useState(getDefaultRange);
-
+  const [userId] = useState(() => localStorage.getItem("userId")?.trim() ?? "");
   const [localUsername] = useState(() => localStorage.getItem("username")?.trim() ?? "");
   const [authToken] = useState(() => localStorage.getItem("token")?.trim() ?? "");
   const [role] = useState(() => localStorage.getItem("role")?.toLowerCase() ?? "user");
@@ -249,17 +249,13 @@ export default function LaporanKeuanganAdmin() {
       }
     }
 
-    // Only call setState when we actually resolved at least one username,
-    // avoiding a re-render (and re-running this effect) when nothing changed.
+  
     if (Object.keys(resolved).length > 0) {
-      // Functional updater: merges new entries into existing state without
-      // needing usernameByUserId as a dep on this callback.
+    
       setUsernameByUserId((prev) => ({ ...prev, ...resolved }));
     }
   }, [authToken, logs]);
-  // Deps: authToken is stable. logs changes only when fetchLogs resolves,
-  // which happens once on mount (and never re-triggers fetchLogs itself).
-  // So this callback is recreated only when logs actually change — correct.
+
 
   useEffect(() => {
     if (role !== "admin") {
