@@ -28,10 +28,14 @@ type PlayPlan = {
 
 const BASEURL = import.meta.env.VITE_BASEURL;
 const PHYSICAL_PC_ID = import.meta.env.VITE_PC_ID;
-const toDateMs = (value: number) => (value < 1_000_000_000_000 ? value * 1000 : value);
+const toDateMs = (value: number) =>
+  value < 1_000_000_000_000 ? value * 1000 : value;
 
 const resolvePcId = (fallback: string | null) => {
-  const fromStorage = Number.parseInt(localStorage.getItem("pcId")?.trim() ?? "", 10);
+  const fromStorage = Number.parseInt(
+    localStorage.getItem("pcId")?.trim() ?? "",
+    10,
+  );
   if (Number.isFinite(fromStorage) && fromStorage > 0) return fromStorage;
 
   const fromFallback = Number.parseInt(fallback?.trim() ?? "", 10);
@@ -117,6 +121,7 @@ const formatDuration = (seconds: number) => {
     ? `${h}h ${m}m ${s.toString().padStart(2, "0")}s`
     : `${m}m ${s.toString().padStart(2, "0")}s`;
 };
+
 const getLogIcon = (type: string) => {
   switch (type) {
     case "topup":
@@ -135,6 +140,7 @@ const getLogIcon = (type: string) => {
 const getLogColor = (coins: number) => {
   return coins >= 0 ? "log-positive" : "log-negative";
 };
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const [foodMenu, setFoodMenu] = useState<FoodItem[]>([]);
@@ -144,6 +150,7 @@ export default function Dashboard() {
   const [isPlanLoading, setIsPlanLoading] = useState(false);
   const [isBalanceLoading, setIsBalanceLoading] = useState(false);
   const [isLogsLoading, setIsLogsLoading] = useState(false);
+  const [isOrdering, setIsOrdering] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -159,7 +166,9 @@ export default function Dashboard() {
   const [user] = useState({
     userId: localStorage.getItem("userId"),
     username: localStorage.getItem("username"),
-    pcId: (PHYSICAL_PC_ID ? String(PHYSICAL_PC_ID) : null) ?? localStorage.getItem("pcId"),
+    pcId:
+      (PHYSICAL_PC_ID ? String(PHYSICAL_PC_ID) : null) ??
+      localStorage.getItem("pcId"),
   });
 
   const loginAt = useMemo(() => {
@@ -214,10 +223,8 @@ export default function Dashboard() {
     try {
       const response = await fetch(`${BASEURL}/api/user/${user.userId}`);
       if (!response.ok) throw new Error();
-
-      const result = await response.json(); 
+      const result = await response.json();
       const serverCoin = result.data?.balance ?? coin;
-
       setCoin(serverCoin);
       localStorage.setItem("coin", String(serverCoin));
     } catch {
@@ -227,43 +234,49 @@ export default function Dashboard() {
     }
   }, [user.userId, coin]);
 
-  const fetchMenus = useCallback(async (signal?: AbortSignal) => {
-    setIsMenuLoading(true);
-    try {
-      if (!authToken) throw new Error("Token login belum ada.");
-      const response = await fetch(`${BASEURL}/api/menus`, {
-        signal,
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      });
-      const payload = await response.json();
-      setFoodMenu(normalizeMenus(payload));
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsMenuLoading(false);
-    }
-  }, [authToken]);
+  const fetchMenus = useCallback(
+    async (signal?: AbortSignal) => {
+      setIsMenuLoading(true);
+      try {
+        if (!authToken) throw new Error("Token login belum ada.");
+        const response = await fetch(`${BASEURL}/api/menus`, {
+          signal,
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
+        const payload = await response.json();
+        setFoodMenu(normalizeMenus(payload));
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsMenuLoading(false);
+      }
+    },
+    [authToken],
+  );
 
-  const fetchPlans = useCallback(async (signal?: AbortSignal) => {
-    setIsPlanLoading(true);
-    try {
-      if (!authToken) throw new Error("Token login belum ada.");
-      const response = await fetch(`${BASEURL}/api/plans`, {
-        signal,
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-        },
-      });
-      const payload = await response.json();
-      setPlans(normalizePlans(payload));
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsPlanLoading(false);
-    }
-  }, [authToken]);
+  const fetchPlans = useCallback(
+    async (signal?: AbortSignal) => {
+      setIsPlanLoading(true);
+      try {
+        if (!authToken) throw new Error("Token login belum ada.");
+        const response = await fetch(`${BASEURL}/api/plans`, {
+          signal,
+          headers: {
+            Authorization: `Bearer ${authToken}`,
+          },
+        });
+        const payload = await response.json();
+        setPlans(normalizePlans(payload));
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setIsPlanLoading(false);
+      }
+    },
+    [authToken],
+  );
 
   const fetchLogs = useCallback(
     async (signal?: AbortSignal) => {
@@ -338,7 +351,9 @@ export default function Dashboard() {
     };
 
     try {
-      if (!authToken) return alert("Token login belum ada. Silakan login ulang dulu ya.");
+      if (!authToken)
+        return alert("Token login belum ada. Silakan login ulang dulu ya.");
+      setIsOrdering(true);
       const response = await fetch(`${BASEURL}/api/order`, {
         method: "POST",
         headers: {
@@ -354,10 +369,13 @@ export default function Dashboard() {
         setQuantities({});
         setIsMenuOpen(false);
       } else {
-        alert("Gagal memesan.");
+        const err = await response.json();
+        alert(err.message ?? "Gagal memesan.");
       }
     } catch {
       alert("Network error.");
+    } finally {
+      setIsOrdering(false);
     }
   };
 
@@ -381,7 +399,8 @@ export default function Dashboard() {
     };
 
     try {
-      if (!authToken) return alert("Token login belum ada. Silakan login ulang dulu ya.");
+      if (!authToken)
+        return alert("Token login belum ada. Silakan login ulang dulu ya.");
       const response = await fetch(`${BASEURL}/api/session/buy`, {
         method: "POST",
         headers: {
@@ -532,7 +551,6 @@ export default function Dashboard() {
         </article>
       </div>
 
-      {/* Plan Modal */}
       {isPlanOpen && (
         <div
           className="menu-modal-overlay"
@@ -588,7 +606,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Food Modal */}
       {isMenuOpen && (
         <div
           className="menu-modal-overlay"
@@ -636,14 +653,24 @@ export default function Dashboard() {
                 ))}
             </div>
             <div className="menu-modal-footer">
-              <button className="btn" onClick={handleSubmitOrder}>
-                Pesan
+              <button
+                className="btn"
+                onClick={handleSubmitOrder}
+                disabled={isOrdering}
+              >
+                {isOrdering ? (
+                  <>
+                    <span className="spinner" /> Memesan...
+                  </>
+                ) : (
+                  "Pesan"
+                )}
               </button>
             </div>
           </div>
         </div>
       )}
-      {/* Logout Confirm Modal */}
+
       {showLogoutConfirm && (
         <div
           className="confirm-overlay"
