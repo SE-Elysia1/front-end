@@ -94,6 +94,16 @@ export default function Settings() {
     setConfirmPassword("")
   }
 
+  const cancel = () => {
+    setError(null)
+    setSuccess(null)
+    setIsEditing(false)
+    setNewUsername(username)
+    setCurrentPassword("")
+    setNewPassword("")
+    setConfirmPassword("")
+  }
+
   const save = async () => {
     setError(null)
     setSuccess(null)
@@ -208,9 +218,14 @@ export default function Settings() {
 
         <div className="profile-actions">
           {isEditing ? (
-            <button className="btn" type="button" onClick={save} disabled={isSaving}>
-              {isSaving ? "Menyimpan..." : "Save"}
-            </button>
+            <>
+              <button className="btn btn-secondary" type="button" onClick={cancel} disabled={isSaving}>
+                Cancel
+              </button>
+              <button className="btn" type="button" onClick={save} disabled={isSaving}>
+                {isSaving ? "Menyimpan..." : "Save"}
+              </button>
+            </>
           ) : (
             <button className="btn" type="button" onClick={startEdit} disabled={isProfileLoading}>
               {isProfileLoading ? "Memuat..." : "Edit"}
