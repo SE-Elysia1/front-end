@@ -163,7 +163,7 @@ export default function HistoryAdmin() {
               toNonEmptyString(item.userName) ??
               toNonEmptyString(item.name) ??
               toNonEmptyString(item.customer) ??
-              "-";
+              (toNumber(item.userId) !== null ? `User #${toNumber(item.userId)}` : "-");
 
             const descriptionRaw =
               toNonEmptyString(item.description) ??
