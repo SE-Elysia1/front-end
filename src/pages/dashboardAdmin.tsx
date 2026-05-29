@@ -233,15 +233,13 @@ export default function DashboardAdmin() {
     const valid = entries.filter((entry): entry is readonly [number, string] => !!entry);
     if (!valid.length) return;
 
-    // Functional updater: no need for usernameByUserId in deps.
+  
     setUsernameByUserId((prev) => {
       const next = { ...prev };
       for (const [id, username] of valid) next[id] = username;
       return next;
     });
   }, [authToken, logs]);
-  // Deps: authToken stable (useState initializer). logs changes only when
-  // fetchLogs resolves. Neither dep causes a loop.
 
   useEffect(() => {
     if (role !== "admin") {

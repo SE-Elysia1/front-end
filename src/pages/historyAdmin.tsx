@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./dashboardAdmin.css";
 import "./historyAdmin.css";
@@ -7,6 +7,7 @@ const BASEURL = import.meta.env.VITE_BASEURL;
 
 type AdminOrderRow = {
   id: number;
+  userId: number;
   pcId: number | null;
   username: string;
   description: string;
@@ -30,7 +31,8 @@ const toNonEmptyString = (value: unknown) => {
   return trimmed.length ? trimmed : null;
 };
 
-const toDateMs = (value: number) => (value < 1_000_000_000_000 ? value * 1000 : value);
+const toDateMs = (value: number) =>
+  value < 1_000_000_000_000 ? value * 1000 : value;
 
 const pad2 = (value: number) => String(Math.max(0, value)).padStart(2, "0");
 
@@ -61,9 +63,15 @@ const getDefaultMonthYear = () => {
 };
 
 const resolvePcId = () => {
-  const fromStorage = Number.parseInt(localStorage.getItem("pcId")?.trim() ?? "", 10);
+  const fromStorage = Number.parseInt(
+    localStorage.getItem("pcId")?.trim() ?? "",
+    10,
+  );
   if (Number.isFinite(fromStorage) && fromStorage > 0) return fromStorage;
-  const fromEnv = Number.parseInt((import.meta.env.VITE_PC_ID as string | undefined)?.trim() ?? "", 10);
+  const fromEnv = Number.parseInt(
+    (import.meta.env.VITE_PC_ID as string | undefined)?.trim() ?? "",
+    10,
+  );
   if (Number.isFinite(fromEnv) && fromEnv > 0) return fromEnv;
   return null;
 };
@@ -94,11 +102,29 @@ export default function HistoryAdmin() {
   const [orders, setOrders] = useState<AdminOrderRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [usernameByUserId, setUsernameByUserId] = useState<
+    Record<number, string>
+  >({});
+  const fetchingUserIds = useRef<Set<number>>(new Set());
 
-  const role = useMemo(() => localStorage.getItem("role")?.toLowerCase() ?? "user", []);
-  const tokenFromLogin = useMemo(() => localStorage.getItem("token")?.trim() ?? "", []);
-  const secretToken = useMemo(() => (import.meta.env.VITE_ADMIN_SECRET_TOKEN as string | undefined)?.trim() ?? "", []);
-  const authToken = useMemo(() => secretToken || tokenFromLogin, [secretToken, tokenFromLogin]);
+  const role = useMemo(
+    () => localStorage.getItem("role")?.toLowerCase() ?? "user",
+    [],
+  );
+  const tokenFromLogin = useMemo(
+    () => localStorage.getItem("token")?.trim() ?? "",
+    [],
+  );
+  const secretToken = useMemo(
+    () =>
+      (import.meta.env.VITE_ADMIN_SECRET_TOKEN as string | undefined)?.trim() ??
+      "",
+    [],
+  );
+  const authToken = useMemo(
+    () => secretToken || tokenFromLogin,
+    [secretToken, tokenFromLogin],
+  );
 
   const dateRange = useMemo(() => {
     const from = new Date(year, month, 1, 0, 0, 0, 0);
@@ -117,53 +143,44 @@ export default function HistoryAdmin() {
       setIsLoading(true);
       setErrorMessage("");
       try {
-        const endpoint = "/api/logs";
-        const base = typeof BASEURL === "string" && BASEURL.trim().length ? BASEURL.trim() : window.location.origin;
-        const baseUrl = new URL(endpoint, base);
+        const base =
+          typeof BASEURL === "string" && BASEURL.trim().length
+            ? BASEURL.trim()
+            : window.location.origin;
+        const url = new URL("/api/logs", base);
+        url.searchParams.set("from", dateRange.from.toISOString());
+        url.searchParams.set("to", dateRange.to.toISOString());
 
-        const makeUrl = (withRange: boolean) => {
-          const next = new URL(baseUrl.toString());
-          if (withRange) {
-            next.searchParams.set("from", dateRange.from.toISOString());
-            next.searchParams.set("to", dateRange.to.toISOString());
-          }
-          return next;
-        };
+        const response = await fetch(url.toString(), {
+          signal,
+          headers: { Authorization: `Bearer ${authToken}` },
+        });
 
-        const requestOnce = async (withRange: boolean) => {
-          const response = await fetch(makeUrl(withRange).toString(), {
-            signal,
-            headers: { Authorization: `Bearer ${authToken}` },
-          });
-          if (!response.ok) {
-            const detail = `${response.status} ${response.statusText}`.trim();
-            throw new Error(detail || "Request failed");
-          }
-          const payload: unknown = await response.json();
-          return extractOrdersList(payload);
-        };
-
-        let list: unknown[] = [];
-        try {
-          list = await requestOnce(true);
-        } catch {
-          // ignore, fallback below
+        if (!response.ok) {
+          const detail = `${response.status} ${response.statusText}`.trim();
+          throw new Error(detail || "Request failed");
         }
-        if (list.length === 0) {
-          // you wheelchair
-          list = await requestOnce(false);
-        }
+
+        const payload: unknown = await response.json();
+        const list = extractOrdersList(payload);
 
         const mapped: AdminOrderRow[] = list
-          .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+          .filter(
+            (item): item is Record<string, unknown> =>
+              !!item && typeof item === "object",
+          )
           .map((item) => {
-            const pcId = toNumber(item.pcId) ?? toNumber(item.pc) ?? toNumber(item.pc_id);
+            const userId = toNumber(item.userId) ?? 0;
+            const pcId =
+              toNumber(item.pcId) ?? toNumber(item.pc) ?? toNumber(item.pc_id);
+
+        
             const username =
               toNonEmptyString(item.username) ??
               toNonEmptyString(item.userName) ??
               toNonEmptyString(item.name) ??
               toNonEmptyString(item.customer) ??
-              (toNumber(item.userId) !== null ? `User #${toNumber(item.userId)}` : "-");
+              "";
 
             const descriptionRaw =
               toNonEmptyString(item.description) ??
@@ -174,12 +191,22 @@ export default function HistoryAdmin() {
 
             const descriptionLines = Array.isArray(item.items)
               ? item.items
-                  .filter((x): x is Record<string, unknown> => !!x && typeof x === "object")
-                  .map((x) => toNonEmptyString(x.name) ?? toNonEmptyString(x.title) ?? "")
+                  .filter(
+                    (x): x is Record<string, unknown> =>
+                      !!x && typeof x === "object",
+                  )
+                  .map(
+                    (x) =>
+                      toNonEmptyString(x.name) ??
+                      toNonEmptyString(x.title) ??
+                      "",
+                  )
                   .filter(Boolean)
               : [];
 
-            const description = descriptionLines.length ? `${descriptionRaw}\n${descriptionLines.join("\n")}` : descriptionRaw;
+            const description = descriptionLines.length
+              ? `${descriptionRaw}\n${descriptionLines.join("\n")}`
+              : descriptionRaw;
 
             const coins =
               toNumber(item.coins) ??
@@ -196,10 +223,17 @@ export default function HistoryAdmin() {
               toNumber(item.createdAtMs) ??
               0;
 
-            const displayTime = toNonEmptyString(item.displayTime) ?? toNonEmptyString(item.displayDate) ?? formatTime(createdAt);
+            const displayTime =
+              toNonEmptyString(item.displayTime) ??
+              toNonEmptyString(item.displayDate) ??
+              formatTime(createdAt);
 
             return {
-              id: toNumber(item.id) ?? toNumber(item.orderId) ?? (createdAt ? createdAt : Date.now()),
+              id:
+                toNumber(item.id) ??
+                toNumber(item.orderId) ??
+                (createdAt || Date.now()),
+              userId,
               pcId,
               username,
               description,
@@ -213,8 +247,14 @@ export default function HistoryAdmin() {
         setOrders(mapped);
       } catch (err) {
         if ((err as { name?: string }).name !== "AbortError") {
-          const message = toNonEmptyString((err as { message?: unknown }).message);
-          setErrorMessage(message ? `Gagal memuat riwayat transaksi (${message}).` : "Gagal memuat riwayat transaksi.");
+          const message = toNonEmptyString(
+            (err as { message?: unknown }).message,
+          );
+          setErrorMessage(
+            message
+              ? `Gagal memuat riwayat transaksi (${message}).`
+              : "Gagal memuat riwayat transaksi.",
+          );
           setOrders([]);
         }
       } finally {
@@ -223,6 +263,66 @@ export default function HistoryAdmin() {
     },
     [authToken, dateRange.from, dateRange.to],
   );
+
+  
+  const fetchMissingUsernames = useCallback(async () => {
+    if (!authToken) return;
+
+    const ids = Array.from(new Set(orders.map((o) => o.userId)))
+      .filter((id) => id > 0)
+      .filter((id) => {
+        // Skip if a fetch is already in-flight for this id.
+        if (fetchingUserIds.current.has(id)) return false;
+        // Skip if the log entry itself already carries a username.
+        const hasInline = orders.some(
+          (o) => o.userId === id && toNonEmptyString(o.username),
+        );
+        return !hasInline;
+      });
+
+    if (!ids.length) return;
+
+    // Mark all as in-flight before any await to prevent duplicate requests.
+    for (const id of ids) fetchingUserIds.current.add(id);
+
+    const entries = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const response = await fetch(`${BASEURL}/api/user/${id}`, {
+            headers: { Authorization: `Bearer ${authToken}` },
+          });
+          if (!response.ok) return null;
+          const payload: unknown = await response.json();
+          if (!payload || typeof payload !== "object") return null;
+          const root = payload as Record<string, unknown>;
+          const rootName =
+            toNonEmptyString(root.username) ??
+            toNonEmptyString(root.userName) ??
+            toNonEmptyString(root.name);
+          if (rootName) return [id, rootName] as const;
+          const data = root.data;
+          if (!data || typeof data !== "object") return null;
+          const dataObj = data as Record<string, unknown>;
+          const nestedName =
+            toNonEmptyString(dataObj.username) ??
+            toNonEmptyString(dataObj.userName) ??
+            toNonEmptyString(dataObj.name);
+          return nestedName ? ([id, nestedName] as const) : null;
+        } catch {
+          return null;
+        }
+      }),
+    );
+
+    const valid = entries.filter((e): e is readonly [number, string] => !!e);
+    if (!valid.length) return;
+
+    setUsernameByUserId((prev) => {
+      const next = { ...prev };
+      for (const [id, name] of valid) next[id] = name;
+      return next;
+    });
+  }, [authToken, orders]);
 
   useEffect(() => {
     if (role !== "admin") {
@@ -234,6 +334,10 @@ export default function HistoryAdmin() {
     return () => controller.abort();
   }, [fetchOrders, navigate, role]);
 
+  useEffect(() => {
+    fetchMissingUsernames();
+  }, [fetchMissingUsernames]);
+
   const filteredOrders = useMemo(() => {
     const fromMs = dateRange.from.getTime();
     const toMs = dateRange.to.getTime();
@@ -242,6 +346,17 @@ export default function HistoryAdmin() {
       return createdMs >= fromMs && createdMs <= toMs;
     });
   }, [dateRange.from, dateRange.to, orders]);
+
+  const displayUsername = useCallback(
+    (order: AdminOrderRow) => {
+     
+      return (
+        usernameByUserId[order.userId] ??
+        (toNonEmptyString(order.username) || `User #${order.userId}`)
+      );
+    },
+    [usernameByUserId],
+  );
 
   const handleLogout = async () => {
     const pcId = resolvePcId();
@@ -280,7 +395,11 @@ export default function HistoryAdmin() {
           </div>
         </div>
         <nav className="admin-nav">
-          <button className="admin-nav-item" type="button" onClick={() => navigate("/app/dashboard-admin")}>
+          <button
+            className="admin-nav-item"
+            type="button"
+            onClick={() => navigate("/app/dashboard-admin")}
+          >
             <span className="admin-nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
                 <path d="M3 10.5L12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1V10.5Z" />
@@ -288,7 +407,11 @@ export default function HistoryAdmin() {
             </span>
             Dashboard
           </button>
-          <button className="admin-nav-item" type="button" onClick={() => navigate("/app/monitoring-admin")}>
+          <button
+            className="admin-nav-item"
+            type="button"
+            onClick={() => navigate("/app/monitoring-admin")}
+          >
             <span className="admin-nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
                 <path d="M12 3v4" />
@@ -300,7 +423,11 @@ export default function HistoryAdmin() {
             </span>
             Monitoring PC
           </button>
-          <button className="admin-nav-item" type="button" onClick={() => navigate("/app/kelola-user-admin")}>
+          <button
+            className="admin-nav-item"
+            type="button"
+            onClick={() => navigate("/app/kelola-user-admin")}
+          >
             <span className="admin-nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
                 <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2" />
@@ -321,7 +448,11 @@ export default function HistoryAdmin() {
             </span>
             Riwayat Transaksi
           </button>
-          <button className="admin-nav-item" type="button" onClick={() => navigate("/app/laporan-keuangan-admin")}>
+          <button
+            className="admin-nav-item"
+            type="button"
+            onClick={() => navigate("/app/laporan-keuangan-admin")}
+          >
             <span className="admin-nav-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" fill="none">
                 <path d="M6 4h12v3H6z" />
@@ -337,12 +468,19 @@ export default function HistoryAdmin() {
       <main className="admin-main">
         <header className="admin-header">
           <h2>Halo, Admin!</h2>
-          <button type="button" className="btn admin-logout-btn" onClick={handleLogout}>
+          <button
+            type="button"
+            className="btn admin-logout-btn"
+            onClick={handleLogout}
+          >
             Log Out
           </button>
         </header>
 
-        <section className="card admin-order-history-card" aria-label="Riwayat Transaksi Admin">
+        <section
+          className="card admin-order-history-card"
+          aria-label="Riwayat Transaksi Admin"
+        >
           <div className="admin-order-history-top">
             <h3>Riwayat Transaksi</h3>
             <div className="admin-order-history-filters">
@@ -352,7 +490,12 @@ export default function HistoryAdmin() {
               <select
                 id="admin-history-month"
                 value={month}
-                onChange={(e) => setMonthYear((prev) => ({ ...prev, month: Number.parseInt(e.target.value, 10) }))}
+                onChange={(e) =>
+                  setMonthYear((prev) => ({
+                    ...prev,
+                    month: Number.parseInt(e.target.value, 10),
+                  }))
+                }
               >
                 {monthOptions.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -367,7 +510,12 @@ export default function HistoryAdmin() {
               <select
                 id="admin-history-year"
                 value={year}
-                onChange={(e) => setMonthYear((prev) => ({ ...prev, year: Number.parseInt(e.target.value, 10) }))}
+                onChange={(e) =>
+                  setMonthYear((prev) => ({
+                    ...prev,
+                    year: Number.parseInt(e.target.value, 10),
+                  }))
+                }
               >
                 {yearOptions.map((y) => (
                   <option key={y} value={y}>
@@ -392,13 +540,19 @@ export default function HistoryAdmin() {
             ) : errorMessage ? (
               <div className="admin-order-history-empty">{errorMessage}</div>
             ) : filteredOrders.length === 0 ? (
-              <div className="admin-order-history-empty">Belum ada transaksi.</div>
+              <div className="admin-order-history-empty">
+                Belum ada transaksi.
+              </div>
             ) : (
               filteredOrders.map((order) => (
                 <div key={order.id} className="admin-history-row">
                   <span>{order.pcId ? `PC ${order.pcId}` : "-"}</span>
-                  <span className="admin-order-history-username">{order.username}</span>
-                  <span className="admin-order-history-desc">{order.description}</span>
+                  <span className="admin-order-history-username">
+                    {displayUsername(order)}
+                  </span>
+                  <span className="admin-order-history-desc">
+                    {order.description}
+                  </span>
                   <span>{Math.abs(order.coins)} Coin</span>
                   <span>{order.displayTime}</span>
                 </div>
