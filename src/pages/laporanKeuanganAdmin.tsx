@@ -1,4 +1,3 @@
- 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import "./dashboardAdmin.css";
@@ -74,62 +73,141 @@ const formatDateReadable = (value: string) => {
   return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(date);
 };
 
-const wrapText = (text: string, maxChars: number) => {
-  const words = text.trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return [""];
+
+const COL_X = { pc: 40, user: 100, desc: 220, nominal: 400, waktu: 490 };
+const DESC_MAX_CHARS = 32;
+
+const chunkDesc = (text: string): string[] => {
+  const segments = text.split(",").map((s) => s.trim()).filter(Boolean);
   const lines: string[] = [];
   let current = "";
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (next.length > maxChars && current) {
+  for (const seg of segments) {
+    const candidate = current ? `${current}, ${seg}` : seg;
+    if (candidate.length > DESC_MAX_CHARS && current) {
       lines.push(current);
-      current = word;
+      current = seg;
     } else {
-      current = next;
+      current = candidate;
     }
   }
   if (current) lines.push(current);
-  return lines;
+  return lines.length ? lines : [text];
 };
+const PAGE_W = 595;
+const PAGE_H = 842;
+const MARGIN_TOP = 50;
+const MARGIN_BOTTOM = 40;
+const LINE_H = 15;
+const FONT_SIZE_BODY = 9;
+const FONT_SIZE_TITLE = 14;
+const FONT_SIZE_HEADER = 10;
 
-const buildPdfBytes = (lines: string[]) => {
-  const pageWidth = 595;
-  const pageHeight = 842;
-  const marginLeft = 40;
-  const marginTop = 40;
-  const lineHeight = 16;
-  const maxLinesPerPage = Math.floor((pageHeight - marginTop * 2) / lineHeight);
+type PdfRow =
+  | { kind: "title"; text: string }
+  | { kind: "meta"; text: string }
+  | { kind: "spacer" }
+  | { kind: "thead" }
+  | { kind: "hrule" }
+  | { kind: "trow"; pc: string; user: string; desc: string; nominal: string; waktu: string };
 
-  const pages: string[][] = [];
-  for (let i = 0; i < lines.length; i += maxLinesPerPage) {
-    pages.push(lines.slice(i, i + maxLinesPerPage));
-  }
-  if (!pages.length) pages.push(["Laporan kosong"]);
-
+const buildPdfBytes = (rows: PdfRow[]) => {
   const objects: string[] = [];
-  const addObject = (content: string) => {
-    objects.push(content);
-    return objects.length;
-  };
+  const addObject = (content: string) => { objects.push(content); return objects.length; };
 
   const catalogId = addObject("");
   const pagesId = addObject("");
-  const fontId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  const fontRegId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
+  const fontBoldId = addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>");
+
+  const pages: PdfRow[][] = [];
+  let current: PdfRow[] = [];
+  let usedH = 0;
+  const maxH = PAGE_H - MARGIN_TOP - MARGIN_BOTTOM;
+
+  for (const row of rows) {
+    const h =
+      row.kind === "title" ? LINE_H * 2
+      : row.kind === "spacer" ? LINE_H * 0.8
+      : row.kind === "trow" ? LINE_H * chunkDesc(row.desc).length + 2
+      : LINE_H;
+    if (usedH + h > maxH && current.length > 0) {
+      pages.push(current);
+      current = [];
+      usedH = 0;
+    }
+    current.push(row);
+    usedH += h;
+  }
+  if (current.length) pages.push(current);
+  if (!pages.length) pages.push([{ kind: "meta", text: "Laporan kosong" }]);
 
   const pageIds: number[] = [];
-  for (const pageLines of pages) {
-    const contentLines: string[] = ["BT", "/F1 12 Tf"];
-    let y = pageHeight - marginTop;
-    for (const line of pageLines) {
-      const escaped = escapePdfText(line);
-      contentLines.push(`1 0 0 1 ${marginLeft} ${y} Tm (${escaped}) Tj`);
-      y -= lineHeight;
+
+  for (const pageRows of pages) {
+    const ops: string[] = [];
+    let y = PAGE_H - MARGIN_TOP;
+
+    for (const row of pageRows) {
+      if (row.kind === "spacer") { y -= LINE_H * 0.8; continue; }
+
+      if (row.kind === "hrule") {
+        ops.push(`0.7 0.7 0.7 RG`);
+        ops.push(`0.5 w`);
+        ops.push(`${COL_X.pc} ${y + 3} m ${PAGE_W - 40} ${y + 3} l S`);
+        y -= 4;
+        continue;
+      }
+
+      if (row.kind === "title") {
+        ops.push(`BT /FB ${FONT_SIZE_TITLE} Tf 1 0 0 1 ${COL_X.pc} ${y} Tm (${escapePdfText(row.text)}) Tj ET`);
+        y -= LINE_H * 2;
+        continue;
+      }
+
+      if (row.kind === "meta") {
+        ops.push(`BT /FR ${FONT_SIZE_BODY} Tf 1 0 0 1 ${COL_X.pc} ${y} Tm (${escapePdfText(row.text)}) Tj ET`);
+        y -= LINE_H;
+        continue;
+      }
+
+      if (row.kind === "thead") {
+        ops.push(`0.2 0.2 0.2 rg`);
+        ops.push(`${COL_X.pc - 4} ${y - 3} ${PAGE_W - 72} ${LINE_H} re f`);
+        ops.push(`1 1 1 rg`); 
+        ops.push(`BT /FB ${FONT_SIZE_HEADER} Tf`);
+        ops.push(`1 0 0 1 ${COL_X.pc} ${y} Tm (PC) Tj`);
+        ops.push(`1 0 0 1 ${COL_X.user} ${y} Tm (User) Tj`);
+        ops.push(`1 0 0 1 ${COL_X.desc} ${y} Tm (Jenis Transaksi) Tj`);
+        ops.push(`1 0 0 1 ${COL_X.nominal} ${y} Tm (Nominal) Tj`);
+        ops.push(`1 0 0 1 ${COL_X.waktu} ${y} Tm (Waktu) Tj`);
+        ops.push(`ET`);
+        ops.push(`0 0 0 rg`); 
+        y -= LINE_H + 4;
+        continue;
+      }
+
+      if (row.kind === "trow") {
+        const descLines = chunkDesc(row.desc);
+        const rowH = LINE_H * descLines.length;
+
+        ops.push(`BT /FR ${FONT_SIZE_BODY} Tf`);
+        ops.push(`1 0 0 1 ${COL_X.pc} ${y} Tm (${escapePdfText(row.pc)}) Tj`);
+        ops.push(`1 0 0 1 ${COL_X.user} ${y} Tm (${escapePdfText(row.user)}) Tj`);
+        ops.push(`1 0 0 1 ${COL_X.nominal} ${y} Tm (${escapePdfText(row.nominal)}) Tj`);
+        ops.push(`1 0 0 1 ${COL_X.waktu} ${y} Tm (${escapePdfText(row.waktu)}) Tj`);
+        for (let i = 0; i < descLines.length; i++) {
+          ops.push(`1 0 0 1 ${COL_X.desc} ${y - i * LINE_H} Tm (${escapePdfText(descLines[i])}) Tj`);
+        }
+        ops.push(`ET`);
+        y -= rowH + 2;
+        continue;
+      }
     }
-    contentLines.push("ET");
-    const stream = contentLines.join("\n");
+
+    const stream = ops.join("\n");
     const contentId = addObject(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
     const pageId = addObject(
-      `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 ${fontId} 0 R >> >> /Contents ${contentId} 0 R >>`,
+      `<< /Type /Page /Parent ${pagesId} 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /FR ${fontRegId} 0 R /FB ${fontBoldId} 0 R >> >> /Contents ${contentId} 0 R >>`,
     );
     pageIds.push(pageId);
   }
@@ -139,14 +217,14 @@ const buildPdfBytes = (lines: string[]) => {
 
   let pdf = "%PDF-1.4\n";
   const offsets: number[] = [0];
-  for (let i = 0; i < objects.length; i += 1) {
+  for (let i = 0; i < objects.length; i++) {
     offsets.push(pdf.length);
     pdf += `${i + 1} 0 obj\n${objects[i]}\nendobj\n`;
   }
   const xrefPos = pdf.length;
   pdf += `xref\n0 ${objects.length + 1}\n`;
   pdf += "0000000000 65535 f \n";
-  for (let i = 1; i <= objects.length; i += 1) {
+  for (let i = 1; i <= objects.length; i++) {
     pdf += `${String(offsets[i]).padStart(10, "0")} 00000 n \n`;
   }
   pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalogId} 0 R >>\nstartxref\n${xrefPos}\n%%EOF`;
@@ -164,10 +242,7 @@ export default function LaporanKeuanganAdmin() {
   const [localUsername] = useState(() => localStorage.getItem("username")?.trim() ?? "");
   const [authToken] = useState(() => localStorage.getItem("token")?.trim() ?? "");
   const [role] = useState(() => localStorage.getItem("role")?.toLowerCase() ?? "user");
-
-
   const fetchingUserIds = useRef<Set<number>>(new Set());
-
   const displayUsername = useCallback(
     (log: AdminLogEntry) => {
       const fromLog = typeof log.username === "string" ? log.username.trim() : "";
@@ -213,49 +288,63 @@ export default function LaporanKeuanganAdmin() {
     const sorted = data.sort((a, b) => b.createdAt - a.createdAt);
     setLogs(sorted);
   }, [authToken, userId]);
- 
+
   const fetchMissingUsernames = useCallback(async () => {
     if (!authToken) return;
 
+    const ids = Array.from(new Set(logs.map((log) => log.userId)))
+      .filter((id) => id > 0)
+      .filter((id) => {
+        if (fetchingUserIds.current.has(id)) return false;
+        if (usernameByUserId[id]) return false;
+        const hasInlineUsername = logs.some(
+          (log) => log.userId === id && toNonEmptyString(log.username),
+        );
+        return !hasInlineUsername;
+      });
 
-    const ids = Array.from(new Set(logs.map((log) => log.userId))).filter(
-      (id) => !fetchingUserIds.current.has(id),
-    );
-
-   
     if (!ids.length) return;
-
 
     for (const id of ids) fetchingUserIds.current.add(id);
 
-    const resolved: Record<number, string> = {};
+    const entries = await Promise.all(
+      ids.map(async (id) => {
+        try {
+          const response = await fetch(`${BASEURL}/api/user/${id}`, {
+            headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined,
+          });
+          if (!response.ok) return null;
+          const payload: unknown = await response.json();
+          if (!payload || typeof payload !== "object") return null;
+          const root = payload as Record<string, unknown>;
+          const rootName =
+            toNonEmptyString(root.username) ??
+            toNonEmptyString(root.userName) ??
+            toNonEmptyString(root.name);
+          if (rootName) return [id, rootName] as const;
+          const data = root.data;
+          if (!data || typeof data !== "object") return null;
+          const dataObj = data as Record<string, unknown>;
+          const nestedName =
+            toNonEmptyString(dataObj.username) ??
+            toNonEmptyString(dataObj.userName) ??
+            toNonEmptyString(dataObj.name);
+          return nestedName ? ([id, nestedName] as const) : null;
+        } catch {
+          return null;
+        }
+      }),
+    );
 
-    for (const id of ids) {
-      try {
-        const response = await fetch(`${BASEURL}/api/user/${id}`, {
-          headers: { Authorization: `Bearer ${authToken}` },
-        });
-        if (!response.ok) continue;
-        const payload: unknown = await response.json();
-        if (!payload || typeof payload !== "object") continue;
-        const obj = payload as Record<string, unknown>;
-        const username =
-          toNonEmptyString(obj.username) ??
-          toNonEmptyString(obj.userName) ??
-          toNonEmptyString(obj.name);
-        if (username) resolved[id] = username;
-      } catch {
-        // Network error for one user shouldn't block others; continue.
-      }
-    }
+    const valid = entries.filter((entry): entry is readonly [number, string] => !!entry);
+    if (!valid.length) return;
 
-  
-    if (Object.keys(resolved).length > 0) {
-    
-      setUsernameByUserId((prev) => ({ ...prev, ...resolved }));
-    }
-  }, [authToken, logs]);
-
+    setUsernameByUserId((prev) => {
+      const next = { ...prev };
+      for (const [id, username] of valid) next[id] = username;
+      return next;
+    });
+  }, [authToken, logs, usernameByUserId]); 
 
   useEffect(() => {
     if (role !== "admin") {
@@ -321,33 +410,33 @@ export default function LaporanKeuanganAdmin() {
 
   const downloadPdf = () => {
     const periodText = `${formatDateReadable(startDate)} - ${formatDateReadable(endDate)}`;
-    const lines: string[] = [
-      "LAPORAN KEUANGAN ADMIN",
-      `Periode: ${periodText}`,
-      "",
-      `Total Pendapatan: ${formatRupiah(totalIncomeIdr)}`,
-      `Total Transaksi: ${totalTransactions} Transaksi`,
-      "",
-      "RIWAYAT TRANSAKSI",
-      "PC | User | Jenis Transaksi | Nominal | Waktu",
-      "------------------------------------------------------------",
+
+    const pdfRows: PdfRow[] = [
+      { kind: "title", text: "LAPORAN KEUANGAN ADMIN" },
+      { kind: "meta", text: `Periode   : ${periodText}` },
+      { kind: "meta", text: `Pendapatan: ${formatRupiah(totalIncomeIdr)}` },
+      { kind: "meta", text: `Transaksi : ${totalTransactions} Transaksi` },
+      { kind: "spacer" },
+      { kind: "hrule" },
+      { kind: "thead" },
     ];
 
     if (!filteredLogs.length) {
-      lines.push("Tidak ada transaksi pada periode ini.");
+      pdfRows.push({ kind: "meta", text: "Tidak ada transaksi pada periode ini." });
     } else {
       for (const log of filteredLogs) {
-        const rowPrefix = `${log.pcId ? `PC ${log.pcId}` : "-"} | ${displayUsername(log)} | `;
-        const suffix = ` | ${Math.abs(log.coins)} Coin | ${log.displayDate || "-"}`;
-        const descLines = wrapText(log.description || log.type || "-", 48);
-        lines.push(`${rowPrefix}${descLines[0]}${suffix}`);
-        for (let i = 1; i < descLines.length; i += 1) {
-          lines.push(`    |     | ${descLines[i]}`);
-        }
+        pdfRows.push({
+          kind: "trow",
+          pc: log.pcId ? `PC ${log.pcId}` : "-",
+          user: displayUsername(log),
+          desc: log.description || log.type || "-",
+          nominal: `${Math.abs(log.coins)} Coin`,
+          waktu: log.displayDate || "-",
+        });
       }
     }
 
-    const bytes = buildPdfBytes(lines);
+    const bytes = buildPdfBytes(pdfRows);
     const blob = new Blob([bytes], { type: "application/pdf" });
     const fileName = `laporan-keuangan-${startDate || "awal"}_sampai_${endDate || "akhir"}.pdf`;
     const url = URL.createObjectURL(blob);

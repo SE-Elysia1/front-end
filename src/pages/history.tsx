@@ -17,6 +17,20 @@ const BASEURL = import.meta.env.VITE_BASEURL;
 
 const toDateMs = (value: number) => (value < 1_000_000_000_000 ? value * 1000 : value);
 
+const formatDateLocal = (date: Date) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+};
+
+const getDefaultRange = () => {
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), 1);
+  const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return { startDate: formatDateLocal(start), endDate: formatDateLocal(end) };
+};
+
 const getLogIcon = (type: string) => {
   switch (type) {
     case "topup":
@@ -38,8 +52,7 @@ const getLogColor = (coins: number) => {
 export default function History() {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
+  const [{ startDate, endDate }, setRange] = useState(getDefaultRange);
 
   const userId = localStorage.getItem("userId");
   const authToken = useMemo(() => {
@@ -115,7 +128,7 @@ export default function History() {
           <input
             type="date"
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(e) => setRange((prev) => ({ ...prev, startDate: e.target.value }))}
             aria-label="Tanggal Mulai"
           />
         </label>
@@ -127,7 +140,7 @@ export default function History() {
           <input
             type="date"
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={(e) => setRange((prev) => ({ ...prev, endDate: e.target.value }))}
             aria-label="Tanggal Akhir"
           />
         </label>
